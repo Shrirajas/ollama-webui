@@ -11,6 +11,31 @@ back. With "Auto", a router sends each message to a light model, a reasoning
 model or a vision model on this machine, or, for questions about software, to
 OpenCode's free cloud models.
 
+## Running the `11-word` branch on the server
+
+This branch adds the **Word document** tab to the documents page: several
+source files in (PDF, Word, Excel, CSV, text), one designed Word document out,
+downloaded as Word or PDF. It contains `10-invoice`. On a machine that already
+runs the app:
+
+1. **Get the branch.** `git fetch && git checkout 11-word`
+2. **Install one new package** (`mdit-py-plugins`; `markdown-it-py` and
+   `PyYAML` come with it or are already there):
+   `pip install -r requirements.txt` from the repo root, or with uv
+   `cd backend && uv sync --extra router --inexact`. Without it the app still
+   starts; the tab then says which packages are missing.
+3. **Nothing to add to `models.yaml`.** The tab uses the `documents:` block
+   that is already there (`documents.model`, `qwen3:14b`).
+4. **For the PDF download, LibreOffice** must be on the server
+   (`soffice --version`). Without it the tab offers the Word file only and
+   says why. Ask the user before installing it.
+5. **Restart** and open <http://127.0.0.1:8000/word.html>, or Docs -> Word
+   document. Refresh the browser with Ctrl+Shift+R.
+6. **Check it without a model:** `cd backend && python -m document_engine.word`
+   must print that sources, sharing, building and letterhead all pass.
+
+What to check is under "Word document tab" below, in "Not done".
+
 ## Running the `10-invoice` branch on the server
 
 This branch adds the **Invoices** tab to the documents page: invoices in (PDF,
@@ -295,8 +320,9 @@ backend (a proxy that buffers) before changing the code.
 
 `frontend/documents.html`, reached from the **Docs** link on the main page.
 Tabs: fill a template, change a document, write a new one, the template
-library (result: a downloadable `.docx`), and Invoices (result: a sheet, see
-"Invoices tab" below).
+library (result: a downloadable `.docx`), Word document (several sources into
+one designed document, as Word or PDF, see "Word document tab" below), and
+Invoices (result: a sheet, see "Invoices tab" below).
 
 - **The model never writes the Word file.** It answers in JSON (which blank
   gets which value, or which edit operations to run) and the app's own code
@@ -336,13 +362,21 @@ documents/                         the feature itself (package `document_engine`
       export.py                      rows -> .xlsx / .csv. No model.
       prompts.py                     the model's part: what it is told, the JSON it answers in
       service.py                     the model's part: one page at a time to the local model
+    word/                          the Word document tab, apart from both
+      sources.py                     a source file -> text; Excel sheets as tables. No model.
+      renderer.py                    Markdown -> a designed .docx (from Generate Documents, MIT). No model.
+      build.py                       the page's choices + the Markdown -> the file. No model.
+      prompts.py                     the model's part: what it is told
+      service.py                     the model's part: sources to the local model, the text streamed back
   read_invoices.py                 the same reading from a terminal, for a folder of files
 backend/app/documents/             the HTTP side
   routes.py                          /api/documents/... endpoints
   storage.py                         uploads, versions, the template library on disk
   schemas.py                         request bodies
   invoices.py                        /api/documents/invoices/... endpoints (stores nothing)
+  word.py                            /api/documents/word/... endpoints
 frontend/documents.html            the page
+frontend/word.html                 its Word document tab
 frontend/invoices.html             its Invoices tab
 ```
 
@@ -406,6 +440,91 @@ write over a designed template. Looked at with macOS Quick Look only.
   `soffice` is missing.
 - Only the resume template was tried; a second kind (report, letter with a
   table) still needs to go through prepare -> fill.
+
+### Word document tab (several sources into one designed document)
+
+`frontend/word.html`, a tab of the documents page. Sources in: PDF, `.docx`,
+`.xlsx`/`.xlsm`, CSV, text. Out: a `.docx` built by the app, and a PDF of it.
+
+What it has, all chosen on the page: seven kinds of document (report,
+proposal, white paper, memo, minutes, letter, plain), one colour that the whole
+design is built on, a cover page, a contents page, an author line, a company
+letterhead (header, footer and margins kept, body replaced). In the text:
+numbered headings, tables with a coloured header and right-aligned figures,
+callout boxes (info, success, warning, danger), checklists, quotations, code
+blocks, signature blocks, page breaks, highlighted figures.
+
+How a document is made (`documents/document_engine/word/`):
+
+1. `sources.py` (no model) turns each file into text. PDF, Word and text go
+   through the chat's `extract_text`; an Excel sheet becomes a Markdown table.
+2. `service.py` + `prompts.py` (the model's part) send the instructions and
+   all the sources to the local model, which writes the document as Markdown.
+   It streams to the page as it is written.
+3. `build.py` (no model) puts the page's choices on top of that text and
+   `renderer.py` (no model) writes the Word file.
+4. The file is an ordinary job of the documents page: downloaded through
+   `/api/documents/{job}/download`, changed through `/api/documents/{job}/edit`.
+   `/api/documents/word/{job}/pdf` converts the newest version with LibreOffice.
+
+The text stays on the page and can be edited. "Build again" makes the file
+from it with another kind, colour or pages, without asking the model.
+
+Where the renderer comes from: `renderer.py` is "Generate Documents" 1.2.4 by
+IANUSTEC, a tool written for Open WebUI (MIT, licence file beside it). It was
+cut down by script: everything that talks to Open WebUI and everything that
+goes to the network (Unsplash, image generation, pictures fetched from a URL)
+is gone. The design system, templates, Markdown parser and renderers are
+unchanged, so its README still describes what the Markdown may contain.
+
+OfficeCLI (github.com/iOfficeAI/OfficeCLI) was read and **not** integrated.
+It is a compiled .NET program that updates itself and installs agent skills on
+the machine it runs on, so it was not downloaded or run here. Most of what it
+does for Word this project already does in Python: edit operations, filling
+a template's blanks, contents page, headers and footers. Its HTML and PNG
+rendering of a `.docx` is the one thing that would be new.
+
+Rules to keep:
+- **Local models only, always.** There is no cloud path in `word/service.py`
+  and `documents.allow_cloud` does not apply to it. The page never sends a
+  request without a local model picked.
+- **The model writes Markdown, never the Word file.**
+- **Nothing is fetched.** A picture the model links to is left out.
+- **The page's choices win** over anything the model wrote in the frontmatter.
+  A letterhead is only ever the file the user attached, never a name in the text.
+- **A designed template is refused as a letterhead** (`WordFile.is_letterhead()`),
+  before the model starts.
+- **Each source gets an equal share of the context** (`share()` in
+  `service.py`); what a short file does not use goes to the longer ones. A
+  file that is cut is named in a note on the page.
+- The contents page lists the section names as text. Word replaces that with
+  the real contents and page numbers when the file is opened; a PDF keeps the
+  names without page numbers (`_list_contents` in `build.py`).
+
+Status. On this laptop there is no Ollama, so the model was a stand-in that
+streams a hand-typed document. Run that way: reading every source type, the
+page in a browser (add files, write, edit the text, build again with another
+kind and colour, the change box, both downloads), letterhead, the refusal of
+a designed template, the PDF through LibreOffice 26.8 on macOS, and
+`python -m document_engine.word`. The upstream example `report.md` builds to
+a file of the same size as upstream's own `demo_report.docx`.
+
+**Not done, check these on the server:**
+- **No real model has written a document.** Check that `qwen3:14b` keeps to
+  the Markdown in `prompts.py`: the `---` title lines first, callouts written
+  as `::: callout`, figures from an Excel sheet put in a table and copied
+  exactly. A model that ignores the title lines still gives a document: the
+  first `# ` heading becomes the title.
+- Several long sources at once: how much of each fits at `num_ctx` 16384, and
+  whether the note about cut files appears.
+- No built file was opened in Word itself, only in LibreOffice and python-docx.
+  Open one with a contents page and confirm Word offers to update it.
+- PDF: fonts. The templates ask for Calibri; LibreOffice on a server without
+  it substitutes another font and the line breaks move.
+- Two PDF requests at the same moment can fail (one LibreOffice profile);
+  the second click works. Noted as a shortcut in `backend/app/documents/word.py`.
+- Scanned PDFs and photos are not read here. The Invoices tab reads pictures;
+  this tab says so and refuses them.
 
 ### Invoices tab (invoices into a sheet)
 
@@ -657,10 +776,12 @@ ollama/ollama_pipeline/
   client.py                      raw calls to Ollama
 documents/document_engine/       the Word documents page: engine/ (files) and model/ (prompts, calls)
 documents/document_engine/invoices/   the Invoices tab: reader, checks, export, and the model's part
+documents/document_engine/word/  the Word document tab: sources, renderer, build, and the model's part
 documents/read_invoices.py       invoices from a terminal
 backend/app/documents/           its HTTP routes and storage
 frontend/documents.html          its page
 frontend/invoices.html           the Invoices tab
+frontend/word.html               the Word document tab
 requirements.txt                 pinned Python packages for pip, made from backend/uv.lock
 run.sh, run.ps1                  start the app (macOS/Linux, Windows)
 ```

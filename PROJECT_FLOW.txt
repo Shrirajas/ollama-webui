@@ -9,6 +9,7 @@ FOLDERS (each has one job; calls only go frontend -> backend -> documents -> oll
   frontend/   index.html - the whole UI (HTML + CSS + JS in one file).
               documents.html - the Word documents page (the Docs link).
               invoices.html - its Invoices tab: invoices into a sheet.
+              word.html - its Word document tab: sources into a designed document.
               Talks to the backend only through /api/* over HTTP.
   backend/    FastAPI app (Python). Receives HTTP requests, calls the
               ollama_pipeline package, and serves frontend/ at "/".
@@ -37,6 +38,9 @@ FOLDERS (each has one job; calls only go frontend -> backend -> documents -> oll
                 document_engine/invoices/ the Invoices tab (invoices -> Excel/CSV):
                     reader.py  file -> pages     checks.py  clean, check, confidence
                     export.py  the sheet         prompts.py, service.py  the model's part
+                document_engine/word/     the Word document tab (sources -> a designed .docx):
+                    sources.py  file -> text      renderer.py  Markdown -> Word
+                    build.py    the page's choices on top   prompts.py, service.py  the model's part
                 read_invoices.py          the same from a terminal, for a folder
               Its HTTP side is backend/app/documents/ (routes, storage, schemas,
               invoices).
@@ -135,6 +139,20 @@ INVOICES (the Invoices tab of the documents page)
   4. A person reviews the rows on the page and downloads the sheet (export.py).
   Model and settings: the `invoices:` block in ollama/config/models.yaml.
 
+WORD DOCUMENT (the Word document tab of the documents page)
+  PDF, Word, Excel, CSV and text files in; one designed Word document out,
+  downloaded as Word or as PDF.
+  1. Each source becomes text; an Excel sheet becomes a table (sources.py, no model).
+  2. A local model reads all of them with the instructions and writes the
+     document as Markdown, streamed to the page (prompts.py, service.py).
+     Never a cloud model. Each source gets an equal share of the context.
+  3. The app builds the Word file from that text with what was chosen on the
+     page: kind of document, colour, cover, contents page, letterhead
+     (build.py, renderer.py, no model).
+  4. The text can be edited and built again without the model. The PDF is made
+     by LibreOffice from the Word file; without it only Word is offered.
+  Model and settings: the `documents:` block in ollama/config/models.yaml.
+
 REQUIREMENTS
   - macOS, Linux or Windows
   - Python 3.11+ and uv (https://docs.astral.sh/uv/), or pip with
@@ -166,6 +184,8 @@ HOW TO MODIFY
   Change the UI                                       -> frontend/index.html
   Change what the model is told about invoices        -> documents/document_engine/invoices/prompts.py
   Change the invoice checks or the confidence         -> documents/document_engine/invoices/checks.py
+  Change how the Word document tab's model writes     -> documents/document_engine/word/prompts.py
+  Change that tab's templates or design               -> documents/document_engine/word/renderer.py, build.py
   New Python dependency: add to the right pyproject.toml, then `cd backend && uv sync`.
 
 NOT BUILT YET

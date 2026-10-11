@@ -31,6 +31,23 @@ read_invoices.py   the same from a terminal:
                    cd backend && python ../documents/read_invoices.py <folder> --out out.xlsx
 ```
 
+The Word document tab has a folder of its own too:
+
+```
+document_engine/word/
+  sources.py    a source file (PDF, Word, Excel, CSV, text) -> its text. No model.
+  renderer.py   Markdown with frontmatter -> a designed .docx: seven templates, cover,
+                numbered headings, tables, callouts, signatures, contents page. No model.
+                From "Generate Documents" by IANUSTEC (MIT), without its Open WebUI
+                and network parts.
+  build.py      what the user chose on the page + the Markdown -> the file. No model.
+  prompts.py    the model's part: what it is told, and the Markdown it may write
+  service.py    the model's part: all sources to the local model, the text streamed back
+```
+
+Check it without a model: `cd backend && python -m document_engine.word`
+
+- The Word document page: `frontend/word.html`; its routes: `backend/app/documents/word.py`
 - HTTP routes and file storage: `backend/app/documents/` (`invoices.py` for the Invoices tab)
 - The Invoices page: `frontend/invoices.html`; its settings: the `invoices:` block in `models.yaml`
 - The page: `frontend/documents.html`
