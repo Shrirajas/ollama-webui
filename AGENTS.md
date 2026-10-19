@@ -11,6 +11,129 @@ back. With "Auto", a router sends each message to a light model, a reasoning
 model or a vision model on this machine, or, for questions about software, to
 OpenCode's free cloud models.
 
+## Open tasks: start here (asked for by the user, 19 October 2026)
+
+Work on the branch `new-db-approach13` (or a new branch made from it). Do
+these in order. When one is done, move it to "Done" at the end of this list,
+say what was tested and how, and push. Keep to "Rules" near the end of this
+file.
+
+### Task 1. Check the large-file work on the real server
+
+The branch was tested only against stand-in llama-servers (see the next
+section). On the server with Gemma 4 12B and Llama 3.1 8B:
+
+1. Run `cd backend && python -m ollama_pipeline`. Both models must show as
+   ready, and the context per request must be what llama-server's `-c` /
+   `-np` gives (it is read from `/props`). Try it with and without
+   `--kv-unified`.
+2. In the chat (Ctrl+Shift+R first):
+   - Attach a 100+ page PDF and ask about one fact in it. Check that the
+     Sources list shows the right page.
+   - Ask "summarise this PDF". "Reading … parts read" should count up, and
+     the answer should come from the notes.
+   - Attach a 50,000-row Excel file and ask "total sales by region as a
+     chart". The SQL must be SQLite, use the sheet's table and column names,
+     and give the right figures.
+3. Note the time for the summary of a 250-page file and what other users
+   feel meanwhile. Reading in parts is two requests at a time per person
+   (`CONCURRENT_PARTS` in `workspaces/workspace_engine/chatfiles.py`).
+4. Try the llama-server flags from the next section. Read the KV cache size
+   from the `llama_kv_cache ... size` line of the server log, then write the
+   flags that worked into the header of
+   `ollama/config.llamacpp/models.yaml`.
+
+### Task 2. Check document generation and fix what is broken
+
+The documents section is `frontend/documents.html`. It offers four tasks:
+- **Create a new document:** `frontend/word.html`, served by
+  `backend/app/documents/word.py` and `documents/document_engine/word/`.
+- **Fill in a template.**
+- **Change a document.**
+- **Read invoices into a sheet:** `frontend/invoices.html`.
+
+The first three are served by `backend/app/documents/routes.py` and
+`documents/document_engine/engine/` and `model/`.
+
+1. Run the checks that need no model, then go through each task in a browser
+   as a person would:
+   - `cd backend && python -m document_engine.word`;
+   - the invoice checks described under "Invoices tab".
+   Use a real model on the server, or a stand-in (an example is
+   described under "Tested end to end" below). Write down every step that
+   fails or confuses.
+2. **Known gap.** These pages still split the model's context between their
+   sources (`share()` in `documents/document_engine/word/service.py`), so a
+   very big source is cut, with a note. Make them read big sources the way
+   the chat now does:
+   - passages that match the request, via `workspace_engine.ChatFiles` /
+     `Workspace.search`;
+   - or notes from reading in parts (`ChatFiles.read_whole`);
+   - and spreadsheets as SQL tables (`sql_connector.import_file`) when only
+     figures are needed.
+   Keep "local models only" and "the model writes Markdown, never the file".
+3. Fix the two old lint warnings in
+   `documents/document_engine/engine/wordedit.py`: the unused `W_TBL` import
+   and the unused `first`.
+4. Check: `python -m document_engine.word` passes, and ruff passes
+   (`uvx ruff check --select E,F,W --ignore E501 --exclude '**/.venv' .`).
+   Also open a made file in Word or LibreOffice.
+
+### Task 3. Add presentation generation (PowerPoint)
+
+The user wants slides made like "Create a new document" makes Word files.
+It is a new part of the documents section.
+
+Build it with the same split as the Word part:
+- `documents/document_engine/slides/`:
+  - `prompts.py`: what the model is told. It writes the deck as Markdown, for
+    example `# Slide title`, bullets, `Notes:` lines for speaker notes, a
+    Markdown table, or a fenced `chart` block with labels and values.
+  - `service.py`: the sources and the request go to the local model; the
+    text streams back. Reuse `word/sources.py` to read the sources, and the
+    big-file handling from Task 2.
+  - `build.py` (no model): Markdown to slides with `python-pptx`. It covers a
+    title slide, a section slide, title + bullets, two columns, a table, and
+    a native chart (bar, line or pie) from the figures. A slide that
+    overflows is split into two.
+  - `__main__.py`: a check with no model, which builds a deck from a
+    hand-written Markdown and reads it back with python-pptx.
+- `backend/app/documents/slides.py`: routes like `word.py`:
+  - `GET /api/documents/slides/config`
+  - `POST /api/documents/slides/create`, which streams like the Word one
+  - `POST /api/documents/slides/build`, which builds again from edited text
+  - `GET /api/documents/slides/{job}/pdf`, through LibreOffice as in `word.py`
+  A made deck is an ordinary documents job, downloaded through
+  `/api/documents/{job}/download`.
+- `frontend/slides.html`: the same layout as `word.html`. The page has
+  sources, the request, and choices: slide count, one colour, 16:9 or 4:3,
+  and an optional company template `.pptx` (its masters and layouts are used,
+  its slides removed). The text is shown and can be edited, then built again
+  without the model. Add a fifth task card, "Create a presentation", on
+  `documents.html`.
+- Dependency: `python-pptx` (MIT). Add it to `documents/pyproject.toml`, run
+  `cd backend && uv sync --inexact`, then regenerate `requirements.txt` with
+  the command in its header. It is not installed yet.
+
+Rules, the same as for the Word part:
+- Local models only, with no cloud path.
+- The model never writes the file.
+- Nothing is fetched (no pictures from URLs).
+- The page's choices win over the model's text.
+- Figures from Excel are copied exactly.
+
+Check:
+- `python -m document_engine.slides` passes.
+- A deck from a PDF and an Excel source opens in LibreOffice Impress (and
+  PowerPoint if available) with no repair prompt.
+- The chart is a real chart, not a picture.
+- Add a section to this file like "Word document tab": what it does, its
+  rules, and what is not done.
+
+### Done
+- Big files without losing the context: the branch section below (tested
+  with stand-ins; Task 1 checks it on the server).
+
 ## Running the `new-db-approach13` branch: big files without losing the context
 
 The problem this branch fixes: with a big PDF or Excel file the model "lost
@@ -164,29 +287,7 @@ with `exceed_context_size_error`, as llama-server does. All of these passed:
 - `documents/document_engine/engine/wordedit.py` has two old lint warnings
   (unused `W_TBL` import, unused `first`); they are not from this branch.
 
-### Next, asked for by the user and not started
-
-1. **Check the document generation.** Go through the documents pages as a
-   person would, using the stand-in or a real model, and fix what is broken.
-   The pages are Create a new document (`word.html`), Fill in a template,
-   Change a document, and Invoices. Those pages still read sources with their
-   own share of `entry.budget` (`word/service.py`, `share()`). They do not
-   yet use chat files, passages or reading in parts, so a very big source is
-   cut there. Consider reusing `ChatFiles.read_whole` for them.
-2. **Presentation generation (PowerPoint).** A new part of the documents
-   section, next to "Create a new document": sources in, slides out
-   (`.pptx`, and PDF through LibreOffice like the Word tab). Suggested shape,
-   following the Word tab's split:
-   - The model writes the deck as Markdown or JSON (title, slides, bullets,
-     notes, a table or chart per slide), never the file.
-   - Code with no model in it builds the `.pptx` with `python-pptx` (MIT; add
-     it to `documents/pyproject.toml`, `uv sync --inexact`, then regenerate
-     `requirements.txt`).
-   - Choices on the page: one colour, a few layouts, a slide count, a company
-     template `.pptx` used as the master.
-   - Charts made from Excel figures with python-pptx's native charts.
-   - Local models only, nothing fetched, the page's choices win, as in the
-     Word tab.
+The next tasks the user asked for are in "Open tasks: start here" at the top of this file.
 
 ## Running the `tools` branch on the server (llama.cpp, SQL connector, workspaces)
 
