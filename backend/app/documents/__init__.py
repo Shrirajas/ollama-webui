@@ -4,6 +4,7 @@
   storage.py   uploads, versions and the template library on disk
   schemas.py   request bodies
   invoices.py  the /api/documents/invoices endpoints (the Invoices tab; nothing is stored)
+  word.py      the /api/documents/word endpoints (the Word tab: sources in, a designed document out)
 
 The work on the files themselves is in the top-level `documents/` folder
 (package `document_engine`).

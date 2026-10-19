@@ -11,13 +11,246 @@ back. With "Auto", a router sends each message to a light model, a reasoning
 model or a vision model on this machine, or, for questions about software, to
 OpenCode's free cloud models.
 
-## Running the `10-invoices` branch on the server
+## Running the `tools` branch on the server (llama.cpp, SQL connector, workspaces)
+
+This branch adds four things (Workspaces and Agent skills have their own sections below), and a round of fixes:
+
+- **llama.cpp instead of Ollama.** The server runs llama.cpp's `llama-server`
+  with Gemma 4 12B and Llama 3.1 8B, not Ollama. A host in `models.yaml`
+  written `{url: ..., kind: llamacpp}` is a llama-server: the app talks to its
+  OpenAI API (`/v1/chat/completions`) through
+  `ollama/ollama_pipeline/llamacpp.py`, which gives back the same chunks as
+  Ollama, so the chat, Auto, documents, invoices and the SQL tools work
+  unchanged. A plain URL is still an Ollama server; both can be mixed.
+  `provider: ollama` on a model still means "local" (on one of `hosts:`).
+- **The SQL connector**, rebuilt from AnythingLLM's SQL agent skill
+  (`server/utils/agents/aibitat/plugins/sql-agent/`). Databases are saved on
+  the new **Databases** page (`frontend/databases.html`); picking one in the
+  chat's model menu lets a local model answer from it with four tools:
+  `list_databases`, `list_tables`, `get_table_schema`, `query`. Each lookup
+  is shown in the reply (the query and the first rows).
+
+Steps on the server:
+
+1. **Get the branch.** `git fetch && git checkout tools`
+2. **Install the new packages** (`psycopg[binary]`, `pymysql`, `numpy`, the
+   project's own `sql/`, `workspaces/` and `skills/`): `pip install -r requirements.txt`, or
+   `cd backend && uv sync --extra router --inexact`. SQLite needs nothing.
+3. **Start both llama-servers with `--jinja`** (tool calls need it), Gemma
+   with `--mmproj` (pictures). The commands are at the top of
+   `ollama/config.llamacpp/models.yaml`: Gemma on port 8080, Llama on 8081.
+4. **Use that config:** `cp -r ollama/config.llamacpp ollama/config.local`
+   (or edit the ports and names in the copy first). If a `config.local`
+   already exists, copy the `hosts:`, `sql:` and model entries into it.
+5. **Check:** `cd backend && python -m ollama_pipeline` lists both hosts as
+   `ok (llama.cpp ...)` and `llama ... ready, calls tools`.
+   `python -m sql_connector` must print that all checks pass.
+6. **Restart**, open <http://127.0.0.1:8000/databases.html>, add a database
+   (Test, then Save), then in the chat open the model menu, pick it under
+   "Answer from a database", and ask about its data. Ctrl+Shift+R first.
+
+Rules to keep:
+
+- **Read-only, three times over.** `safety.py` refuses anything but one
+  SELECT / WITH / SHOW / DESCRIBE / EXPLAIN, and writes hidden inside one
+  (`WITH x AS (DELETE ...)`, `SELECT ... INTO`, `FOR UPDATE`, `pg_sleep`,
+  `nextval`); SQLite is opened `mode=ro`; PostgreSQL and MySQL run every
+  query in a read-only transaction with a time limit (`sql.timeout`).
+  AnythingLLM only asks its model to send SELECTs. Still give the app a
+  database user that can only read.
+- **Local models only.** A database chat never goes to OpenCode; Auto's
+  routing is skipped and `sql.model` answers (or the picked model, when it is
+  local and can call tools; otherwise the reply says which one answers).
+- **Passwords stay on the server**, in `backend/data/sql/connections.json`
+  (mode 600, not in git), as AnythingLLM keeps them. The page never gets them
+  back; leaving the password empty when changing a connection keeps it.
+- **The model never sees more than it asked for:** at most `sql.max_rows`
+  rows per query, and at most `sql.max_rounds` lookups before it must answer.
+- `ollama_pipeline` knows nothing about SQL: `chat_stream` takes any `tools`
+  and a `run_tool` function; the backend passes the SQL ones in.
+
+Not done, check these on the server:
+
+- **No real model has called the tools.** Tested against stand-ins for Ollama
+  and for llama-server that make the calls a model would (including
+  llama-server's way of sending a tool call in pieces). Check that Llama 3.1
+  8B calls `list_tables` before `query` and writes SQL for the right dialect;
+  try `sql.model: gemma` too.
+- Whether Gemma 4's template is seen as able to call tools (`/props`
+  `chat_template` mentions tools). If not, add `tools: true` to its entry.
+- **No live PostgreSQL or MySQL was reached**, only SQLite. Try one of each:
+  Test, Tables, a question, and a write such as "delete the orders" (it must
+  be refused).
+- llama-server answers one request at a time unless started with `-np 2`
+  or more; Auto's router and a reply then wait for each other.
+- `num_ctx` cannot change llama-server's context; its `-c` does.
+
+### Workspaces (document search with sources, RAG)
+
+Modelled on AnythingLLM's workspaces. A team puts its documents (PDF, Word,
+Excel, CSV, text; many at once) in a workspace on the **Workspaces** page
+(`frontend/workspaces.html`). In the chat, the **Workspaces** panel on the
+left picks one; every answer is then based on the passages of its documents
+that match the question, and a "Sources" list under the answer shows each
+passage (document, page) with its text.
+
+How it works (`workspaces/workspace_engine/`, package `workspace_engine`):
+
+1. The backend reads the file (`backend/app/workspaces/routes.py`): a PDF page
+   by page, so a passage can name its page; Word, Excel, CSV and text through
+   the Word tab's `read_source`. Up to 5 million characters per file.
+2. `chunking.py` splits it into passages of about `chunk_chars` (1200) that
+   overlap by `overlap_chars` (200) and end at a paragraph or sentence.
+3. `service.py` gets a vector for each passage from the embedding model
+   (`workspaces.embed_model`), and `index.py` stores passages, vectors and a
+   full-text index in `backend/data/workspaces/<id>/index.db` (SQLite FTS5).
+4. For a question, `index.py` ranks passages by words (BM25) and by meaning
+   (vectors), combines the two (reciprocal rank fusion) and the top `top_k`
+   (6) go into the system message with numbers; `prompts.py` tells the model
+   to cite them as [1], [2] and to say when the documents do not cover it.
+   A short follow-up ("and for flights?") is searched together with the
+   question before it.
+
+Rules to keep:
+- **Local models only.** A workspace chat never goes to OpenCode: Auto picks
+  a local model (`select_local_model`); picking a cloud model is refused.
+- **It works without an embedding model.** Without one (not set, not running,
+  or failing) passages are found by words only, and the page says so. Passages
+  indexed that way get vectors later with **Re-index**. Vectors from another
+  embedding model are not mixed with new ones: the workspace asks to be
+  re-indexed.
+- **The same file twice is skipped; a changed file with the same name
+  replaces the old one.**
+- To change what the model is told, edit `workspace_engine/prompts.py` only.
+
+Embedding model: `workspaces.embed_model` in `models.yaml`. With llama.cpp, a
+third llama-server started with `--embedding` (the command is at the top of
+`ollama/config.llamacpp/models.yaml`, port 8082). With Ollama,
+`ollama pull nomic-embed-text`. `query_prefix` / `document_prefix` are what
+nomic-embed-text expects; empty them for other models.
+
+Checks without a model: `cd backend && python -m workspace_engine`.
+
+Not done, check these on the server:
+- **No real embedding model has been used**, only a stand-in. Run
+  nomic-embed-text v1.5 on llama-server with `-b 2048 -ub 2048` (a passage
+  longer than the batch fails) and check that "Search by meaning" shows on
+  the Workspaces page.
+- **No real chat model has answered from passages.** Check that Llama 3.1 8B
+  and Gemma 4 12B cite [n] and say so when the documents do not cover a
+  question. The top 6 passages are always sent, even weak ones; if answers
+  drift, lower `top_k`.
+- Speed of adding a large PDF (hundreds of pages) with a real embedding model.
+- Scanned PDFs have no text and are refused, as in the chat.
+- There are no logins yet: anyone who can open the app can see and delete
+  every workspace.
+
+### Agent skills (charts, memory) and the Admin panel
+
+Modelled on AnythingLLM's agent skills (`rechart`, `memory`) and its Admin ->
+Agent Skills page. Code: `skills/agent_skills/` (package `agent_skills`, no
+model in it), `backend/app/admin/routes.py`, `frontend/admin.html`.
+
+- **Charts.** The model calls `create_chart` with the kind (bar, line, area,
+  pie), labels and series; `charts.py` checks the numbers ("₹1,200" becomes
+  1200, a series must have one value per label) and the chat draws the chart
+  as SVG, with no chart library, so it works offline. A wrong call is sent back
+  with the reason so the model can fix it.
+- **Memory.** Short facts per workspace, plus a "general" list for chats
+  without one, in `backend/data/admin/memories.json`. Every chat answered by a
+  local model gets its scope's memories in the system message (never a cloud
+  model). Admins add, edit and remove them on the Admin panel; in the chat the
+  model saves or forgets one only when the user asks (`save_memory`,
+  `forget_memory`), if "Save and forget from the chat" is on. When several
+  memories could be meant, nothing is forgotten and the model is told to ask.
+- **Switches** (`backend/data/admin/skills.json`): Database queries, Charts,
+  Memory, Save and forget from the chat. All on by default. With Database
+  queries off, the chat hides the database picker and `/api/chat` refuses a
+  database (403).
+- **A skill is offered only when the message needs it** (`toolbox.py`): charts
+  with a database or workspace picked or when a chart is asked for; the memory
+  tools when the message says remember or forget. Small models call tools
+  they do not need, so an everyday chat gets none. A message that does get a
+  skill is answered by `sql.model` (the local model that calls tools).
+- **The Admin panel needs `ADMIN_PASSWORD`** in `backend/.env`. Without it
+  the panel is closed (403); a wrong password waits a second. It stands in
+  for users and roles, which do not exist yet. The Databases and Workspaces
+  pages are still open to everyone.
+
+On the server: set `ADMIN_PASSWORD`, restart, open
+<http://127.0.0.1:8000/admin.html>. Check without a model:
+`cd backend && python -m agent_skills`.
+
+Not done, check these on the server:
+- **No real model has called `create_chart`, `save_memory` or
+  `forget_memory`**, only a stand-in. Check that Llama 3.1 8B copies the
+  numbers exactly and saves a memory only when asked.
+- Charts were looked at in Chromium only.
+
+### Fixed in this round (review of the branch)
+
+- **SQL, critical:** on PostgreSQL a crafted query could run a write. psycopg
+  runs every statement of a query sent without parameters, and the text check
+  read `#` and `\'` the MySQL way, so `SELECT 1 # x; COMMIT; SET
+  default_transaction_read_only = off; DELETE FROM orders` passed it. Now
+  PostgreSQL queries go as prepared statements (one statement only), the
+  check reads strings as each database does and refuses comments, and MySQL
+  sessions are read-only too. The bypasses are in `python -m sql_connector`.
+- Workspaces with names in Kannada, Hindi or with accents could not be
+  created; ids are now ASCII (`workspace-<random>` when nothing is left).
+- A picture sent alone in a workspace no longer searches for nothing.
+- `python -m ollama_pipeline` no longer fails when only the optional
+  embeddings server is down.
+- llama-server's "--jinja" and "mmproj" errors now say what to start it with.
+- A database lookup cut off by Stop no longer shows "Running a query…".
+- **Documents pages:** the six tabs are gone. `documents.html` opens on four
+  tasks (Create a new document, Fill in a template, Change a document, Read
+  invoices into a sheet); each task shows its steps and what the button is
+  waiting for. "Write a new one" was folded into Create a new document
+  (`word.html`, which has the letterhead too); saved templates are offered
+  right where a template is chosen. `documents.html#create` goes to
+  `word.html`. The chat's menu lost its two placeholder links.
+
+UI fixes in this branch: the chat composer's text, chips and model name no
+longer shrink below a readable size on laptop screens (floors, positions
+unchanged); the model menu is wider and shows whole descriptions; selected
+items show a tick and finished Thinking / lookup blocks a chevron instead of
+more dots; status dots only show while something is running; the documents
+pages' small text is a size larger and their buttons taller with more padding,
+and a disabled button looks switched off.
+
+## Running the `11-word` branch on the server
+
+This branch adds the **Word document** tab to the documents page: several
+source files in (PDF, Word, Excel, CSV, text), one designed Word document out,
+downloaded as Word or PDF. It contains `10-invoice`. On a machine that already
+runs the app:
+
+1. **Get the branch.** `git fetch && git checkout 11-word`
+2. **Install one new package** (`mdit-py-plugins`; `markdown-it-py` and
+   `PyYAML` come with it or are already there):
+   `pip install -r requirements.txt` from the repo root, or with uv
+   `cd backend && uv sync --extra router --inexact`. Without it the app still
+   starts; the tab then says which packages are missing.
+3. **Nothing to add to `models.yaml`.** The tab uses the `documents:` block
+   that is already there (`documents.model`, `qwen3:14b`).
+4. **For the PDF download, LibreOffice** must be on the server
+   (`soffice --version`). Without it the tab offers the Word file only and
+   says why. Ask the user before installing it.
+5. **Restart** and open <http://127.0.0.1:8000/word.html>, or Docs -> Word
+   document. Refresh the browser with Ctrl+Shift+R.
+6. **Check it without a model:** `cd backend && python -m document_engine.word`
+   must print that sources, sharing, building and letterhead all pass.
+
+What to check is under "Word document tab" below, in "Not done".
+
+## Running the `10-invoice` branch on the server
 
 This branch adds the **Invoices** tab to the documents page: invoices in (PDF,
 Word, scans, photos), an Excel or CSV sheet out. It contains `6-documents` and
 `8-testing`. On a machine that already runs the app:
 
-1. **Get the branch.** `git fetch && git checkout 10-invoices`
+1. **Get the branch.** `git fetch && git checkout 10-invoice`
 2. **Install three new packages** (`pypdfium2`, `pillow`, `openpyxl`):
    `pip install -r requirements.txt` from the repo root, or with uv
    `cd backend && uv sync --extra router --inexact`. Without them the app still
@@ -295,8 +528,9 @@ backend (a proxy that buffers) before changing the code.
 
 `frontend/documents.html`, reached from the **Docs** link on the main page.
 Tabs: fill a template, change a document, write a new one, the template
-library (result: a downloadable `.docx`), and Invoices (result: a sheet, see
-"Invoices tab" below).
+library (result: a downloadable `.docx`), Word document (several sources into
+one designed document, as Word or PDF, see "Word document tab" below), and
+Invoices (result: a sheet, see "Invoices tab" below).
 
 - **The model never writes the Word file.** It answers in JSON (which blank
   gets which value, or which edit operations to run) and the app's own code
@@ -336,13 +570,21 @@ documents/                         the feature itself (package `document_engine`
       export.py                      rows -> .xlsx / .csv. No model.
       prompts.py                     the model's part: what it is told, the JSON it answers in
       service.py                     the model's part: one page at a time to the local model
+    word/                          the Word document tab, apart from both
+      sources.py                     a source file -> text; Excel sheets as tables. No model.
+      renderer.py                    Markdown -> a designed .docx (from Generate Documents, MIT). No model.
+      build.py                       the page's choices + the Markdown -> the file. No model.
+      prompts.py                     the model's part: what it is told
+      service.py                     the model's part: sources to the local model, the text streamed back
   read_invoices.py                 the same reading from a terminal, for a folder of files
 backend/app/documents/             the HTTP side
   routes.py                          /api/documents/... endpoints
   storage.py                         uploads, versions, the template library on disk
   schemas.py                         request bodies
   invoices.py                        /api/documents/invoices/... endpoints (stores nothing)
+  word.py                            /api/documents/word/... endpoints
 frontend/documents.html            the page
+frontend/word.html                 its Word document tab
 frontend/invoices.html             its Invoices tab
 ```
 
@@ -407,6 +649,91 @@ write over a designed template. Looked at with macOS Quick Look only.
 - Only the resume template was tried; a second kind (report, letter with a
   table) still needs to go through prepare -> fill.
 
+### Word document tab (several sources into one designed document)
+
+`frontend/word.html`, a tab of the documents page. Sources in: PDF, `.docx`,
+`.xlsx`/`.xlsm`, CSV, text. Out: a `.docx` built by the app, and a PDF of it.
+
+What it has, all chosen on the page: seven kinds of document (report,
+proposal, white paper, memo, minutes, letter, plain), one colour that the whole
+design is built on, a cover page, a contents page, an author line, a company
+letterhead (header, footer and margins kept, body replaced). In the text:
+numbered headings, tables with a coloured header and right-aligned figures,
+callout boxes (info, success, warning, danger), checklists, quotations, code
+blocks, signature blocks, page breaks, highlighted figures.
+
+How a document is made (`documents/document_engine/word/`):
+
+1. `sources.py` (no model) turns each file into text. PDF, Word and text go
+   through the chat's `extract_text`; an Excel sheet becomes a Markdown table.
+2. `service.py` + `prompts.py` (the model's part) send the instructions and
+   all the sources to the local model, which writes the document as Markdown.
+   It streams to the page as it is written.
+3. `build.py` (no model) puts the page's choices on top of that text and
+   `renderer.py` (no model) writes the Word file.
+4. The file is an ordinary job of the documents page: downloaded through
+   `/api/documents/{job}/download`, changed through `/api/documents/{job}/edit`.
+   `/api/documents/word/{job}/pdf` converts the newest version with LibreOffice.
+
+The text stays on the page and can be edited. "Build again" makes the file
+from it with another kind, colour or pages, without asking the model.
+
+Where the renderer comes from: `renderer.py` is "Generate Documents" 1.2.4 by
+IANUSTEC, a tool written for Open WebUI (MIT, licence file beside it). It was
+cut down by script: everything that talks to Open WebUI and everything that
+goes to the network (Unsplash, image generation, pictures fetched from a URL)
+is gone. The design system, templates, Markdown parser and renderers are
+unchanged, so its README still describes what the Markdown may contain.
+
+OfficeCLI (github.com/iOfficeAI/OfficeCLI) was read and **not** integrated.
+It is a compiled .NET program that updates itself and installs agent skills on
+the machine it runs on, so it was not downloaded or run here. Most of what it
+does for Word this project already does in Python: edit operations, filling
+a template's blanks, contents page, headers and footers. Its HTML and PNG
+rendering of a `.docx` is the one thing that would be new.
+
+Rules to keep:
+- **Local models only, always.** There is no cloud path in `word/service.py`
+  and `documents.allow_cloud` does not apply to it. The page never sends a
+  request without a local model picked.
+- **The model writes Markdown, never the Word file.**
+- **Nothing is fetched.** A picture the model links to is left out.
+- **The page's choices win** over anything the model wrote in the frontmatter.
+  A letterhead is only ever the file the user attached, never a name in the text.
+- **A designed template is refused as a letterhead** (`WordFile.is_letterhead()`),
+  before the model starts.
+- **Each source gets an equal share of the context** (`share()` in
+  `service.py`); what a short file does not use goes to the longer ones. A
+  file that is cut is named in a note on the page.
+- The contents page lists the section names as text. Word replaces that with
+  the real contents and page numbers when the file is opened; a PDF keeps the
+  names without page numbers (`_list_contents` in `build.py`).
+
+Status. On this laptop there is no Ollama, so the model was a stand-in that
+streams a hand-typed document. Run that way: reading every source type, the
+page in a browser (add files, write, edit the text, build again with another
+kind and colour, the change box, both downloads), letterhead, the refusal of
+a designed template, the PDF through LibreOffice 26.8 on macOS, and
+`python -m document_engine.word`. The upstream example `report.md` builds to
+a file of the same size as upstream's own `demo_report.docx`.
+
+**Not done, check these on the server:**
+- **No real model has written a document.** Check that `qwen3:14b` keeps to
+  the Markdown in `prompts.py`: the `---` title lines first, callouts written
+  as `::: callout`, figures from an Excel sheet put in a table and copied
+  exactly. A model that ignores the title lines still gives a document: the
+  first `# ` heading becomes the title.
+- Several long sources at once: how much of each fits at `num_ctx` 16384, and
+  whether the note about cut files appears.
+- No built file was opened in Word itself, only in LibreOffice and python-docx.
+  Open one with a contents page and confirm Word offers to update it.
+- PDF: fonts. The templates ask for Calibri; LibreOffice on a server without
+  it substitutes another font and the line breaks move.
+- Two PDF requests at the same moment can fail (one LibreOffice profile);
+  the second click works. Noted as a shortcut in `backend/app/documents/word.py`.
+- Scanned PDFs and photos are not read here. The Invoices tab reads pictures;
+  this tab says so and refuses them.
+
 ### Invoices tab (invoices into a sheet)
 
 `frontend/invoices.html`, the fifth tab of the documents page. Files in: PDF,
@@ -414,7 +741,18 @@ write over a designed template. Looked at with macOS Quick Look only.
 columns, in this order: Invoice File Name, InvoiceId, Invoice Date, DueDate,
 InvoiceTotal, VendorName, VendorAddress, CustomerName, CustomerId,
 BillingAddress, BillingAddressRecipient, VendorAddressRecipient, VendorGST,
-CustomerGST, Confidence.
+CustomerGST, Description, Qty, UnitPrice, UnitAmount, Discount, TaxableValue,
+CGSTAmount, SGSTAmount, IGSTAmount, TotalTaxAmount, HSNSAC, Currency,
+DocumentType, Confidence. Confidence is last, as asked.
+
+**One row for each line of an invoice.** A bill with seven items is seven rows:
+Description, Qty, UnitPrice, UnitAmount and HSNSAC are the line's own. The
+invoice's fields (number, date, seller, buyer, GST numbers, total, taxes, Confidence)
+and the file name stand on its first row, as on the page; the rows after it
+carry only the line. Confidence is written as a percentage (80%). Tick boxes under
+the sheet add: a Summary sheet (one row for each invoice), the Checks sheet, a
+totals row, the invoice's details on every row, its totals on every row.
+A document with no item table (a taxi receipt, a payment screenshot) is one row.
 
 How a file is read (`documents/document_engine/invoices/`):
 
@@ -449,32 +787,67 @@ Rules to keep:
 - Dates are read day first (Indian invoices) and written as `31-Mar-2026`
   (`invoices.date_format`). A due date is never worked out from payment terms.
 - A PAN is not put in a GST column.
+- **The tax breakdown must add up.** Taxable value (less a discount) + tax =
+  total, within a rupee of round-off. When it does, those figures count as
+  confirmed, on a scan too. When it does not, the figures the file's own text
+  does not confirm are marked, with the sum in the note. An invoice with a
+  charge that is neither (freight billed outside the taxable value) is marked
+  as well: that is a prompt to look, not an error.
+- `TotalTaxAmount` is not asked of the model: it is CGST + SGST + IGST, added
+  here. A page with one tax figure and no split keeps that figure. CGST and
+  SGST that differ, or IGST beside them, are marked. A rate ("9%") is never
+  taken for an amount; a tax printed as 0.00 or a dash is left empty.
+- `Currency` is read off the sign or code the model copied (₹, Rs, INR,
+  "Rupees ... Only"), `DocumentType` is what the model called the page
+  (Invoice, Receipt, Payment). Neither counts towards Confidence.
+- **The lines can confirm, they do not mark.** Quantity x unit price making the
+  line's amount, and the lines adding up to the total (or the total before
+  tax, or the taxable value), count as confirmed. When they do not, no cell is
+  marked; a sum that is off is said once in a note. The second server run
+  (1,345 rows, 9 October) had 355 line amounts marked, mostly bills whose
+  lines carry discounts. The Checks sheet lists only values marked for
+  checking and notes on unconfirmed values, not fields that are simply absent. Lines for totals and
+  taxes that the model lists as items are dropped (`_NOT_AN_ITEM`).
+- A row is finished in `merge` (`finish`), after the pages of one invoice are
+  together: only then are all its lines known. `clean` alone returns a row
+  with no Confidence yet.
+- Seen in the first real run, and handled in `checks.py`: the invoice total
+  entered as a tax (dropped); one tax amount entered as both CGST and SGST
+  (moved to IGST when only one such amount fits the total); payment terms
+  entered as a due date (left empty); a year more than three years back
+  (marked).
 - Text in the sheet is written as text, never as a formula: invoices come from
   outside the company.
 
 Settings: the `invoices:` block in `models.yaml`. To change what the model is
 told, edit `invoices/prompts.py` only.
 
-Status. Run on this laptop **without a real model**: a stand-in for Ollama
-returned hand-typed answers for the 16 sample files (text PDFs, scans, a
-handwritten invoice, a photo, a Word file holding a photo, a 24-page file of
-taxi receipts). With that: reading every file type, the checks (on the real
-GSTINs, dates, totals and amounts in words of the samples), merging, the
-page in a browser (add, read, stop, edit, tick, remove, both downloads), the
-Excel and CSV files, the error messages for wrong and broken files, and
-`python -m app` in an environment without the project's packages installed.
+Status. On this laptop there is no Ollama, so everything here was run against
+a stand-in that returns hand-typed answers: reading every file type, the
+checks (on the real GSTINs, dates, totals, amounts in words and line items of
+the samples), merging, the page in a browser (add, read, stop, edit, add and
+remove a line, tick, remove, both downloads), the Excel and CSV files, the
+error messages, and `python -m app` without the project's packages installed.
+
+On the server the user ran it with a real model on 8 October 2026 and
+reported that it works. Their sheet from that run is what the line-by-line
+rows, UnitPrice and UnitAmount, and the fixes listed above come from.
 
 **Not done, check these on the server:**
-- **No real model has read an invoice.** How well `qwen3.5:9b` reads these
-  pages is unknown: start with the 16 samples and compare each row with its
-  invoice. Then the same files with `gemma4:12b`.
-- Whether Ollama accepts the JSON schema together with a picture for these
-  models, and whether `think: false` is honoured.
+- **The line-by-line reading has not been run by a real model.** The model is
+  now asked for a list of lines (`Items`) where it gave one description
+  before. Check that it gives one entry for each line, with the unit price and
+  the amount in the right places, on the two files this was built from: a
+  printed cash bill with seven items, and a photo of a handwritten bill.
+- A page's answer is longer now (a line is about 50 tokens), so pages with
+  many lines take longer; `MAX_ANSWER_TOKENS` in `service.py` is 6000.
 - Speed per page and memory on the 16 GB card (`ollama ps`).
-- Handwriting (two of the samples). Expect mistakes there; the Confidence and
-  the orange marks are what should catch them.
+- Handwriting. Expect mistakes there; the line sums, the Confidence and the
+  orange marks are what should catch them.
 - If small print is misread, raise `invoices.image_side` to 2000.
 - No downloaded file was opened in Excel itself, only read back with openpyxl.
+  A CSV made from the Excel file with Excel's plain "CSV" turns Kannada and
+  other scripts into question marks; the page's own Download CSV keeps them.
 
 ## Your task on this machine
 
@@ -611,10 +984,23 @@ ollama/ollama_pipeline/
   client.py                      raw calls to Ollama
 documents/document_engine/       the Word documents page: engine/ (files) and model/ (prompts, calls)
 documents/document_engine/invoices/   the Invoices tab: reader, checks, export, and the model's part
+documents/document_engine/word/  the Word document tab: sources, renderer, build, and the model's part
 documents/read_invoices.py       invoices from a terminal
+sql/sql_connector/               the SQL connector: connectors, safety, saved connections, tools
+backend/app/sql/                 its HTTP routes (/api/sql/connections)
+frontend/databases.html          its page
+ollama/ollama_pipeline/llamacpp.py   llama-server client (hosts with kind: llamacpp)
+ollama/config.llamacpp/          models.yaml for llama-server: Gemma 4 12B + Llama 3.1 8B
+workspaces/workspace_engine/     workspaces: passages, index (SQLite FTS5 + vectors), search, prompts
+skills/agent_skills/             agent skills: charts, memory, the switches, the per-message toolbox
+backend/app/admin/               the Admin panel's routes (/api/admin, /api/skills)
+frontend/admin.html              the Admin panel
+backend/app/workspaces/          its HTTP routes (/api/workspaces)
+frontend/workspaces.html         its page; the chat's left panel picks a workspace
 backend/app/documents/           its HTTP routes and storage
 frontend/documents.html          its page
 frontend/invoices.html           the Invoices tab
+frontend/word.html               the Word document tab
 requirements.txt                 pinned Python packages for pip, made from backend/uv.lock
 run.sh, run.ps1                  start the app (macOS/Linux, Windows)
 ```
@@ -640,6 +1026,6 @@ run.sh, run.ps1                  start the app (macOS/Linux, Windows)
 
 ## Not built yet
 
-No login, no saved chat history, no text from scanned PDFs, Figma links are
+No login (the Admin panel has one shared password), no saved chat history, no text from scanned PDFs, Figma links are
 passed as text only, no paid cloud models (e.g. Claude) - only OpenCode's
 free tier.
