@@ -20,15 +20,17 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
 
 from .client import JSON_TIMEOUT, STREAM_TIMEOUT
-from .errors import OllamaError, OllamaUnavailable
+from .errors import ContextOverflow, OllamaError, OllamaUnavailable
 
 KIND = "llamacpp"
+PROPS_SECONDS = 60
 DEFAULT_PORT = 8080
 
 # Ollama's option names -> the OpenAI-style fields llama-server reads. Anything
@@ -54,6 +56,21 @@ def _explain(text: str) -> str:
     if "mmproj" in text.lower() or "image input is not supported" in text.lower():
         return f"{text}. Start this llama-server with --mmproj so its model can read pictures."
     return text
+
+
+def _error(response: httpx.Response) -> OllamaError:
+    """The error llama-server answered with. A request too big for its context gets its own
+    class, with the server's counts, so the caller can make it fit and try again."""
+    try:
+        data = response.json()
+    except ValueError:
+        data = {}
+    error = data.get("error") if isinstance(data, dict) else None
+    error = error if isinstance(error, dict) else {}
+    message = _error_text(response)
+    if error.get("type") == "exceed_context_size_error" or "context size" in message.lower():
+        return ContextOverflow(message, error.get("n_prompt_tokens"), error.get("n_ctx"))
+    return OllamaError(message)
 
 
 def _error_text(response: httpx.Response) -> str:
@@ -118,6 +135,7 @@ class LlamaCppClient:
         self.base_url = base_url
         self._http = httpx.AsyncClient(base_url=base_url, timeout=10.0)
         self._props: dict[str, Any] | None = None
+        self._props_at = 0.0
 
     def _unavailable(self, exc: Exception) -> OllamaUnavailable:
         return OllamaUnavailable(
@@ -130,17 +148,29 @@ class LlamaCppClient:
         except httpx.HTTPError as exc:
             raise self._unavailable(exc) from exc
         if response.status_code >= 400:
-            raise OllamaError(_error_text(response))
+            raise _error(response)
         return response.json()
 
     async def _server_props(self) -> dict[str, Any]:
-        if self._props is None:
+        # Read again after a minute: the server may have been restarted with other settings.
+        if self._props is None or time.monotonic() - self._props_at > PROPS_SECONDS:
             self._props = await self._request("GET", "/props")
+            self._props_at = time.monotonic()
         return self._props
+
+    async def context(self) -> tuple[int | None, int | None]:
+        """(tokens one request may hold, number of slots), from the server's own settings.
+
+        One request holds one slot's context: `-c` divided by `-np`, or all of
+        `-c` when the server was started with --kv-unified.
+        """
+        props = await self._server_props()
+        n_ctx = (props.get("default_generation_settings") or {}).get("n_ctx")
+        return (int(n_ctx) if n_ctx else None), props.get("total_slots")
 
     async def version(self) -> str:
         props = await self._request("GET", "/props")
-        self._props = props
+        self._props, self._props_at = props, time.monotonic()
         return f"llama.cpp {props.get('build_info') or ''}".strip()
 
     async def list_models(self) -> list[dict[str, Any]]:
@@ -195,7 +225,7 @@ class LlamaCppClient:
             ) as response:
                 if response.status_code >= 400:
                     await response.aread()
-                    raise OllamaError(_error_text(response))
+                    raise _error(response)
                 async for line in response.aiter_lines():
                     if not line.startswith("data:"):
                         continue
@@ -204,7 +234,10 @@ class LlamaCppClient:
                         break
                     chunk = json.loads(data)
                     if chunk.get("error"):
-                        raise OllamaError(_error_text_from(chunk["error"]))
+                        err = chunk["error"]
+                        if isinstance(err, dict) and err.get("type") == "exceed_context_size_error":
+                            raise ContextOverflow(_error_text_from(err), err.get("n_prompt_tokens"), err.get("n_ctx"))
+                        raise OllamaError(_error_text_from(err))
                     timings = chunk.get("timings") or timings
                     for choice in chunk.get("choices") or []:
                         delta = choice.get("delta") or {}

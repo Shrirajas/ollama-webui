@@ -700,7 +700,7 @@ button{cursor:pointer}
   const DB_KEY = 'fastshot.database';
   const WS_KEY = 'fastshot.workspace'; /* shared with workspaces.html */
   const PANEL_KEY = 'fastshot.workspaces-panel';
-  const MAX_DOC_BYTES = 20 * 1024 * 1024;
+  const MAX_DOC_BYTES = 50 * 1024 * 1024; /* workspaces.max_upload_mb on the server */
   const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
   const el = {
@@ -967,7 +967,7 @@ button{cursor:pointer}
       remove.type = 'button';
       remove.setAttribute('aria-label', 'Remove ' + a.name);
       remove.addEventListener('click', () => { state.attachments.splice(i, 1); renderAttachments(); });
-      pill.append(node('span', '', a.pending ? 'Reading ' + a.name + '…' : a.name), remove);
+      pill.append(node('span', '', a.pending ? 'Reading ' + a.name + '…' : a.name + (a.info ? ' · ' + a.info : '')), remove);
       el.attachments.append(pill);
     });
   }
@@ -986,6 +986,13 @@ button{cursor:pointer}
     reader.readAsDataURL(file);
   });
   /* PDF, DOCX and text files are turned into text by the backend. */
+  /* "84 pages", "3 sheets · 12,345 rows": what a kept file is, for its pill. */
+  function fileInfo(doc) {
+    const n = (x) => Number(x).toLocaleString('en-IN');
+    if (doc.kind === 'table') return (doc.sheets > 1 ? doc.sheets + ' sheets · ' : '') + n(doc.rows) + ' rows';
+    if (doc.pages) return n(doc.pages) + (doc.pages === 1 ? ' page' : ' pages');
+    return doc.tokens > 1000 ? '~' + n(Math.round(doc.tokens / 1000)) + 'k tokens' : '';
+  }
   async function extract(file) {
     const form = new FormData();
     form.append('file', file);
@@ -1003,7 +1010,7 @@ button{cursor:pointer}
     const image = file.type.startsWith('image/');
     const name = file.name || (image ? 'screenshot.png' : 'file');
     if (file.size > (image ? MAX_IMAGE_BYTES : MAX_DOC_BYTES)) {
-      problems.push(name + ' is over ' + (image ? 8 : 20) + ' MB');
+      problems.push(name + ' is over ' + (image ? 8 : 50) + ' MB');
       return;
     }
     const item = { kind: image ? 'image' : 'file', name, pending: true };
@@ -1014,8 +1021,10 @@ button{cursor:pointer}
         item.data = (await readDataUrl(file)).split(',')[1];
       } else {
         const doc = await extract(file);
-        item.content = doc.content;
-        if (doc.truncated) problems.push(name + ' is long: only the first 200,000 characters are attached');
+        /* The file stays on the server: messages carry its id, and each question gets the part it needs. */
+        item.id = doc.id;
+        item.info = fileInfo(doc);
+        if (doc.truncated) problems.push(name + ' is very long: only its first part is kept');
       }
       item.pending = false;
     } catch (err) {
@@ -1296,7 +1305,7 @@ button{cursor:pointer}
       role: 'user',
       content,
       images: attached.filter((a) => a.kind === 'image').map((a) => a.data),
-      files: attached.filter((a) => a.kind === 'file').map((a) => ({ name: a.name, content: a.content })),
+      files: attached.filter((a) => a.kind === 'file').map((a) => (a.id ? { id: a.id, name: a.name } : { name: a.name, content: a.content })),
     };
     const history = state.messages; /* reset() swaps the array, so a late reply can't leak into a new chat */
     history.push(message);
@@ -1348,14 +1357,15 @@ button{cursor:pointer}
     };
     /* One database lookup: what the model asked for, then what came back. */
     const TOOL_NAMES = {
+      read_document: 'Reading the whole document',
       list_databases: 'Listing databases', list_tables: 'Listing tables', get_table_schema: 'Reading columns', query: 'Running a query',
       create_chart: 'Making a chart', save_memory: 'Saving to memory', forget_memory: 'Forgetting',
     };
     const addTool = (event) => {
       const box = node('details', 'think tool');
-      const label = node('summary', '', (TOOL_NAMES[event.name] || event.name) + '…');
-      const text = node('div', 'think-text');
       const args = event.args || {};
+      const label = node('summary', '', (TOOL_NAMES[event.name] || event.name) + (args.file ? ': ' + args.file : '') + '…');
+      const text = node('div', 'think-text');
       if (args.sql_query) text.append(node('pre', '', args.sql_query));
       else if (args.table_name) text.append(node('pre', '', args.table_name));
       box.append(label, text);
@@ -1366,6 +1376,7 @@ button{cursor:pointer}
     const showToolResult = (t, event) => {
       t.box.classList.add('done');
       const what = {
+        read_document: 'Read ' + (event.file || 'the document') + (event.parts ? ' in ' + event.parts + (event.parts === 1 ? ' part' : ' parts') : ''),
         list_databases: 'Listed databases', list_tables: 'Listed tables', get_table_schema: 'Read the columns of ' + (event.table || 'a table'),
         query: 'Ran a query', create_chart: 'Made a chart', save_memory: 'Saved to memory', forget_memory: 'Forgot',
       }[t.name] || t.name;
@@ -1378,6 +1389,12 @@ button{cursor:pointer}
         t.label.textContent = what + (event.chart.title ? ': ' + event.chart.title : '');
         t.text.replaceChildren(chartView(event.chart));
         t.box.open = true;
+        return;
+      }
+      if (t.name === 'read_document') {
+        t.label.textContent = what;
+        t.text.append(node('div', '', 'Too long to read at once, so it was read in parts and the answer is written from notes on each part.'
+          + (event.skipped ? ' Only the first ' + event.parts + ' parts were read.' : '')));
         return;
       }
       if (t.name === 'save_memory' || t.name === 'forget_memory') {
@@ -1478,6 +1495,8 @@ button{cursor:pointer}
           } else if (event.type === 'tool_call') {
             endThinking();
             tool = addTool(event);
+          } else if (event.type === 'tool_progress') {
+            if (tool) tool.label.textContent = event.message;
           } else if (event.type === 'tool_result') {
             if (tool) showToolResult(tool, event);
             tool = null;

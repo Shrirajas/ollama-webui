@@ -9,58 +9,37 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
-import time
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
 
 import numpy as np
-from ollama_pipeline import OllamaError, PipelineError, Registry
+from ollama_pipeline import PipelineError, Registry, estimate
 
 from . import prompts
 from .chunking import passages as split_passages
+from .embedding import BATCH, Embedder
 from .index import Hit, Workspace, WorkspaceError, Workspaces
 
 log = logging.getLogger(__name__)
 
-BATCH = 16  # passages sent to the embedding model at once
-STATUS_SECONDS = 60  # how long a check of the embedding model is trusted
 SNIPPET = 600  # characters of a passage shown under an answer
 
 
-def _unit(vector: list[float]) -> np.ndarray:
-    array = np.asarray(vector, dtype=np.float32)
-    norm = float(np.linalg.norm(array))
-    return array / norm if norm else array
-
-
 class WorkspaceService:
-    def __init__(self, registry: Registry, root: Path):
+    def __init__(self, registry: Registry, root: Path, embedding: Embedder | None = None):
         self.registry = registry
         self.config = registry.config.workspaces
         self.store = Workspaces(root)
-        self._status: tuple[float, dict[str, Any]] | None = None
+        self.embedding = embedding or Embedder(registry)
 
     # ── the embedding model ──
     async def _embed(self, texts: list[str], prefix: str) -> list[np.ndarray]:
-        client = self.registry.client(self.config.embed_host)
-        vectors = await client.embed(self.config.embed_model, [prefix + t for t in texts])
-        return [_unit(v) for v in vectors]
+        return await self.embedding.embed(texts, prefix)
 
     async def embedder(self, fresh: bool = False) -> dict[str, Any]:
         """Whether passages can be searched by meaning right now, and if not, why."""
-        if not self.config.embed_model:
-            return {"ready": False, "model": "", "reason": "No embedding model is set (workspaces.embed_model): search is by keywords."}
-        if self._status and not fresh and time.monotonic() - self._status[0] < STATUS_SECONDS:
-            return self._status[1]
-        try:
-            await self._embed(["ready?"], self.config.query_prefix)
-            status = {"ready": True, "model": self.config.embed_model, "reason": ""}
-        except PipelineError as exc:
-            status = {"ready": False, "model": self.config.embed_model,
-                      "reason": f"The embedding model {self.config.embed_model} is not reachable ({exc}). Search is by keywords until it is."}
-        self._status = (time.monotonic(), status)
-        return status
+        return await self.embedding.status(fresh)
 
     def _stale(self, workspace: Workspace) -> bool:
         """Vectors made by another embedding model than the one set now cannot be compared with new ones."""
@@ -131,7 +110,7 @@ class WorkspaceService:
                     workspace.save_meta(embed_model=self.config.embed_model)
             except PipelineError as exc:
                 vectors = [None] * len(found)
-                self._status = None
+                self.embedding.forget()
                 note = f"Indexed for keyword search only: the embedding model failed ({exc}). Re-index later."
         else:
             note = status["reason"]
@@ -171,12 +150,7 @@ class WorkspaceService:
         workspace = self.store.get(workspace_id)
         vector = None
         if not self._stale(workspace) and workspace.counts()["with_vectors"]:
-            status = await self.embedder()
-            if status["ready"]:
-                try:
-                    vector = (await self._embed([question], self.config.query_prefix))[0]
-                except (OllamaError, PipelineError):
-                    self._status = None
+            vector = await self.embedding.question(question)
         hits = await asyncio.to_thread(workspace.search, question, vector, top_k or self.config.top_k)
         return hits, "meaning and words" if vector is not None else "words"
 
@@ -191,21 +165,36 @@ class WorkspaceService:
             return asked[-2] + "\n" + last
         return last
 
-    async def context(self, workspace_id: str, messages: list[dict[str, Any]]) -> tuple[str, dict[str, Any] | None]:
-        """The instructions and passages for a chat reply, and a `sources` event for the page.
+    async def context(
+        self, workspace_id: str, messages: list[dict[str, Any]], max_tokens: int | None = None, start: int = 1,
+    ) -> tuple[str, str, dict[str, Any] | None]:
+        """What a chat reply gets from the workspace: (rules, passages, a `sources` event).
 
-        ("", None) when the last message has no text to search for.
+        The rules go in the system message, where they stay the same from turn
+        to turn (llama-server reuses that part); the passages go with the
+        question, numbered from `start`, at most `max_tokens` of them. No
+        passages and no event when the last message has no text to search for.
         """
         workspace = self.store.get(workspace_id)
         meta = workspace.meta()
+        rules = prompts.rules(meta["name"], meta.get("instructions") or "")
         question = self.question(messages)
         if not question.strip():
-            return "", None  # a message with only a picture: nothing to search for, so no passages
+            return rules, "", None  # a message with only a picture: nothing to search for
         hits, mode = await self.search(workspace_id, question)
+        if max_tokens:
+            kept, used = [], 0
+            for hit in hits:
+                cost = estimate(hit.text) + 16
+                if used + cost > max_tokens and kept:
+                    break
+                kept.append(hit)
+                used += cost
+            hits = kept
         items = [
             {"n": i, "document": h.document, "label": h.label, "matched_by": h.matched_by,
              "text": h.text if len(h.text) <= SNIPPET else h.text[:SNIPPET].rstrip() + " …"}
-            for i, h in enumerate(hits, 1)
+            for i, h in enumerate(hits, start)
         ]
         event = {"type": "sources", "workspace": meta["name"], "mode": mode, "items": items}
-        return prompts.system(meta["name"], meta.get("instructions") or "", hits), event
+        return rules, prompts.passages(meta["name"], hits, start), event

@@ -6,8 +6,10 @@ workspace: full-text search (FTS5) for words, and vectors from a local
 embedding model for meaning. Nothing leaves the machine.
 """
 
+from .chatfiles import ChatFile, ChatFiles, wants_whole
 from .chunking import Passage, passages, split
+from .embedding import Embedder
 from .index import Hit, Workspace, WorkspaceError, Workspaces
 from .service import WorkspaceService
 
-__all__ = ["Hit", "Passage", "Workspace", "WorkspaceError", "WorkspaceService", "Workspaces", "passages", "split"]
+__all__ = ["ChatFile", "ChatFiles", "Embedder", "Hit", "Passage", "Workspace", "WorkspaceError", "WorkspaceService", "Workspaces", "passages", "split", "wants_whole"]

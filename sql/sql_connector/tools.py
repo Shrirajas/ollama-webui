@@ -68,27 +68,33 @@ DEFINITIONS = [
 ]
 
 PROMPT = """\
-You can read the user's database{s} with tools:
+You can read the user's data with tools, by its database_id:
 {databases}
-Answer questions about the data by querying it; never guess numbers. Work in this order: list_tables, then
-get_table_schema for the tables you need, then query. Write one read-only SELECT at a time in the database's
-own SQL dialect; you cannot change data. If a query fails, read the error, fix the query and try again.
-When you have the rows, answer in plain words, show figures exactly as returned, and put several rows in a
-Markdown table. Say which query you ran when it helps the user check the answer."""
+Answer questions about the data by querying it; never guess numbers, and never add up rows yourself: let SQL
+count, sum, average and group (COUNT, SUM, AVG, GROUP BY, ORDER BY ... LIMIT). Work in this order: the tables
+listed above or list_tables, get_table_schema if you are unsure of a column, then query. Write one read-only
+SELECT at a time in the database's own SQL dialect (SQLite for attached spreadsheets); you cannot change data.
+If a query fails, read the error, fix the query and try again. When you have the rows, answer in plain words,
+show figures exactly as returned, and put several rows in a Markdown table. Say which query you ran when it
+helps the user check the answer."""
 
 
 class SqlTools:
-    def __init__(self, connections: list[Connection], *, max_rows: int = 200, timeout: int = 30, max_chars: int = 12_000):
+    def __init__(self, connections: list[Connection], *, max_rows: int = 200, timeout: int = 30, max_chars: int = 12_000,
+                 about: dict[str, str] | None = None):
+        """`about` describes a connection to the model in place of its `describe()`: for an
+        attached spreadsheet, its tables, columns and first rows."""
         self.connections = {c.id: c for c in connections}
         self.max_rows = max_rows
         self.timeout = timeout
         self.max_chars = max_chars
+        self.about = about or {}
 
     definitions = DEFINITIONS
 
     def system_prompt(self) -> str:
-        lines = "\n".join(f"- database_id `{c.id}`: {c.describe()}" for c in self.connections.values())
-        return PROMPT.format(s="s" if len(self.connections) > 1 else "", databases=lines)
+        lines = "\n".join(f"- database_id `{c.id}`: {self.about.get(c.id) or c.describe()}" for c in self.connections.values())
+        return PROMPT.format(databases=lines)
 
     def _connection(self, args: dict[str, Any]) -> Connection:
         wanted = str(args.get("database_id") or args.get("database") or "").strip()

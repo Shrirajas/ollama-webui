@@ -11,6 +11,125 @@ back. With "Auto", a router sends each message to a light model, a reasoning
 model or a vision model on this machine, or, for questions about software, to
 OpenCode's free cloud models.
 
+## Running the `new-db-approach13` branch: big files without losing the context
+
+The problem this branch fixes: with a big PDF or Excel file the model "lost
+the context". Before, a file's whole text (up to 200,000 characters) went into
+the chat message and the browser sent it again with every later message. One
+llama-server request only holds one slot: `-c` divided by `-np` (e.g. 32768 /
+4 = 8192 tokens). A 100-page PDF is about 60,000 tokens, so the request was
+refused (`exceed_context_size_error`) or the model saw only part of it.
+
+What it does now (studied from AnythingLLM, then adapted):
+
+1. **Every request is fitted to the model's real context**
+   (`ollama/ollama_pipeline/context.py`). The slot size is read from
+   llama-server's `/props` (`n_ctx` per slot, re-read every 60 s;
+   `ModelEntry.context`, `ModelEntry.budget`), or `num_ctx` for Ollama.
+   - Room is kept for the answer (a fifth of the context, 1024 to 4096).
+   - The oldest history goes first and the current turn is kept. The middle
+     of a message that is still too big is cut, with a marker saying so.
+   - If llama-server still refuses (`ContextOverflow`, from its own token
+     count), the request is shrunk and retried, at most twice.
+   - The documents and Word pages use the same real budget.
+2. **Chat files stay on the server** (`workspaces/workspace_engine/chatfiles.py`,
+   `POST /api/files`). They are kept in `backend/data/chatfiles/<id>/` for
+   `documents.keep_hours` (24 h), and messages carry only `{id, name}`.
+   For each question:
+   - Files that fit are given whole.
+   - From bigger ones, the passages that match the question, as many as fit
+     (words with FTS5, plus meaning when the embedding model runs; vectors are
+     made in the background after the upload answers). A "Sources" list shows
+     them.
+   - A summary request ("summarise", "key points", "whole document";
+     `wants_whole`) reads the whole file in parts that fit, two at a time. It
+     notes each part, combines the notes if needed, and answers from the
+     notes. Notes are cached per model, so the next question does not read it
+     again. The chat shows "Reading X: part i of n".
+   - An expired file is named in the reply ("attach it again").
+3. **Spreadsheets become SQLite tables** (`sql/sql_connector/sheets.py`).
+   - The header is found under title rows, and columns are typed: Indian
+     number commas, ₹, day-first dates, and leading-zero codes kept as text.
+   - Up to 1,000,000 rows per sheet.
+   - A small sheet (600 cells or fewer) is given whole as Markdown.
+   - For a bigger one the model gets its tables, columns and 5 sample rows,
+     and queries it with the read-only SQL tools (SQLite dialect). The
+     database does the sums and counts, and charts work on the results.
+   - AnythingLLM embeds sheets as text instead, which cannot total a column.
+4. **Prompt layout for llama-server's prompt cache.** What stays the same from
+   turn to turn goes in the system message: rules, the tools prompt,
+   memories. What belongs to this question (passages, file text) goes in the
+   last user message inside `<context>…</context>`. How the budget is shared:
+   a workspace and files together get 25% and 40% of it; a workspace alone
+   45%; files alone 60% (`_shares` in `backend/app/routes.py`).
+
+What AnythingLLM does, for comparison:
+- Storage: Prisma + SQLite (`workspace_chats` keeps prompt and response per
+  user and thread), and LanceDB for vectors.
+- Retrieval: top 4 passages, similarity 0.25, the last 20 messages of history.
+- Budget: system 15%, history 15%, the user's message 70%. When that is too
+  big it cuts the middle ("cannonball").
+- "Pinned" documents are given whole.
+
+We do the same, with budgets measured from the real slot instead of a fixed
+model size.
+
+Not changed: chat history still lives in the browser only. Server-side chat
+storage (an SQLite table like AnythingLLM's `workspace_chats`) belongs with
+logins, which do not exist yet.
+
+### llama-server on the RTX 4080 Super (16 GB) for 10-12 people
+
+What the GPU memory goes to:
+- **Weights.** Gemma 12B Q4_K_M is about 7.3 GB, plus about 0.85 GB for
+  `--mmproj`. Llama 3.1 8B Q4_K_M is about 4.9 GB.
+- **The KV cache, which grows with the context.**
+  - Llama 3.1 8B needs 128 KiB per token at f16, about 68 KiB at q8_0. So
+    32768 tokens of context are about 2.2 GB at q8_0.
+  - Gemma's sliding window makes its per-token cost smaller.
+  - Read the real figure from the server's startup line
+    `llama_kv_cache ... size = ...`.
+
+**Both chat models fully on the GPU leave about 1 GB for context. That is the
+main limit.** Either:
+- run one chat model on the GPU and give it the context: Gemma for everything,
+  with Llama as a smaller fallback partly on the CPU (`-ngl` lower); or
+- keep both with small contexts.
+
+Flags worth using:
+- `-fa on -ctk q8_0 -ctv q8_0`: flash attention and a q8 KV cache. This
+  halves the cache at almost no quality cost.
+- `-c 32768 -np 4 --kv-unified`: 4 people answered at once. With
+  `--kv-unified` the slots share the 32768 tokens, so one big request can use
+  more than a quarter of them. `python -m ollama_pipeline` and
+  `/props` show the per-request size the app uses.
+- `--cache-reuse 256`: reuses the cached prompt start (system message,
+  history) between turns.
+- `--no-mmproj-offload` if pictures are rare: the vision part stays in RAM.
+- The embedding server on the CPU:
+  `-ngl 0 --embedding -b 2048 -ub 2048` (nomic-embed-text, about 0.3 GB).
+- 10-12 people at 45-50 tokens/s in total means about 4-5 tokens/s each when
+  all of them type at once. `-np` above 4 adds queueing, not speed.
+
+Checks without a model: `cd backend && .venv/bin/python -m ollama_pipeline.selfcheck`,
+`python -m sql_connector` (spreadsheets), `python -m workspace_engine`
+(chat files: whole, passages, reading in parts, expiry).
+
+**Not done, check these on the server:**
+- **No real model has been used for any of this, and it has not been run end
+  to end with a stand-in llama-server.** Only the package self-checks and an
+  import of the app were run.
+- Check, with a real model:
+  - a 100+ page PDF question (passages and Sources);
+  - "summarise this PDF" (progress, then an answer from notes);
+  - a 50,000-row Excel file ("total sales by region", then a chart).
+- Whether llama-server's `/props` reports `n_ctx` per slot as expected with
+  and without `--kv-unified`.
+- Reading in parts uses the chat model for every part: a 250-page file is
+  about 40 requests. Two run at once per person, so others wait behind them.
+- The browser was not clicked through: the file pills ("84 pages",
+  "3 sheets · 12,345 rows") and the "Reading … part i of n" lookup block.
+
 ## Running the `tools` branch on the server (llama.cpp, SQL connector, workspaces)
 
 This branch adds four things (Workspaces and Agent skills have their own sections below), and a round of fixes:
@@ -992,6 +1111,10 @@ frontend/databases.html          its page
 ollama/ollama_pipeline/llamacpp.py   llama-server client (hosts with kind: llamacpp)
 ollama/config.llamacpp/          models.yaml for llama-server: Gemma 4 12B + Llama 3.1 8B
 workspaces/workspace_engine/     workspaces: passages, index (SQLite FTS5 + vectors), search, prompts
+workspaces/workspace_engine/chatfiles.py   files attached in the chat: kept 24 h, passages, read in parts
+ollama/ollama_pipeline/context.py   fitting every request to the model's real context
+sql/sql_connector/sheets.py      Excel/CSV -> SQLite tables the model queries
+backend/data/chatfiles/          chat files on disk (not in git)
 skills/agent_skills/             agent skills: charts, memory, the switches, the per-message toolbox
 backend/app/admin/               the Admin panel's routes (/api/admin, /api/skills)
 frontend/admin.html              the Admin panel

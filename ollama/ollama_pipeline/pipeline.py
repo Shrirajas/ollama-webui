@@ -13,7 +13,8 @@ from typing import Any
 
 from .config import Theme
 from .documents import MAX_FILE_CHARS
-from .errors import ModelNotFound, PipelineError
+from .context import budget_for, fit, shrink
+from .errors import ContextOverflow, ModelNotFound, PipelineError
 from .opencode import PROVIDER as OPENCODE, OpenCodeError
 from .registry import ModelEntry, Registry
 from .router import AUTO_ID, Router
@@ -21,8 +22,6 @@ from .router import AUTO_ID, Router
 # Runs one tool call: (name, arguments) -> (text the model reads, a summary for the page).
 RunTool = Callable[[str, Any], Awaitable[tuple[str, dict[str, Any]]]]
 
-# Rough characters-per-token figure, only used to warn about an overfull context.
-CHARS_PER_TOKEN = 3.5
 
 
 def build_messages(system: str, messages: list[dict[str, Any]], *, keep_images: bool = True) -> list[dict[str, Any]]:
@@ -156,28 +155,16 @@ async def select_local_model(
     if entry.provider != OPENCODE:
         return entry, route
     if model_id not in (AUTO_ID, None):
-        raise PipelineError(f"{entry.label} runs in the cloud, and workspace documents stay on this machine. Pick a local model or Auto.")
+        raise PipelineError(f"{entry.label} runs in the cloud, and workspace documents and attached files stay on this machine. "
+                            "Pick a local model or Auto.")
     local = next((e for e in fallbacks if e.provider != OPENCODE), None)
     if local is None:
         heavy = router.config.route(router.config.heavy_route)
         local = await registry.resolve(heavy.model if heavy else None)
     return local, {
         "type": "route", "model": local.id, "label": local.label, "route": None, "source": "fallback",
-        "confidence": None, "note": "Workspace documents stay on this machine, so a local model answers.",
+        "confidence": None, "note": "Documents and attached files stay on this machine, so a local model answers.",
     }
-
-
-def _context_notice(entry: ModelEntry, payload: list[dict[str, Any]], options: dict[str, Any]) -> str | None:
-    limit = options.get("num_ctx")
-    if not limit:
-        return None
-    estimate = int(sum(len(m["content"]) for m in payload) / CHARS_PER_TOKEN)
-    if estimate <= limit * 0.9:
-        return None
-    return (
-        f"This conversation is roughly {estimate:,} tokens but {entry.label} is set to read {limit:,}, "
-        "so part of it will be cut off. Raise num_ctx in ollama/config/models.yaml or attach less."
-    )
 
 
 async def chat_stream(
@@ -227,26 +214,48 @@ async def chat_stream(
 
     payload = build_messages(entry.system, messages, keep_images=can_see)
     merged = {**entry.options, **(options or {})}
-
-    notice = _context_notice(entry, payload, merged)
-    if notice:
-        yield {"type": "notice", "message": notice}
+    # Every request is made to fit what the model can read at once (see context.py):
+    # the oldest turns go first, and room is kept for the answer.
+    budget = budget_for(entry.context or merged.get("num_ctx"), merged)
+    turn = max((i for i, m in enumerate(payload) if m["role"] == "user"), default=0)
+    noticed = False
 
     client = registry.client(entry.host)
     offered = tools if tools and run_tool else None
     rounds = 0
     while True:
         text, calls, last = "", [], {}
-        async for chunk in client.chat_stream(entry.model, payload, merged, tools=offered):
-            message = chunk.get("message") or {}
-            if message.get("thinking"):
-                yield {"type": "thinking", "content": message["thinking"]}
-            if message.get("content"):
-                text += message["content"]
-                yield {"type": "delta", "content": message["content"]}
-            calls += message.get("tool_calls") or []
-            if chunk.get("done"):
-                last = chunk
+        for attempt in range(3):
+            sent = payload
+            if budget:
+                fitted = fit(payload, budget.prompt, keep_from=turn)
+                sent = fitted.messages
+                note = fitted.notice(budget)
+                if note and not noticed:
+                    noticed = True
+                    yield {"type": "notice", "message": note}
+            received = False
+            try:
+                async for chunk in client.chat_stream(entry.model, sent, merged, tools=offered):
+                    received = True
+                    message = chunk.get("message") or {}
+                    if message.get("thinking"):
+                        yield {"type": "thinking", "content": message["thinking"]}
+                    if message.get("content"):
+                        text += message["content"]
+                        yield {"type": "delta", "content": message["content"]}
+                    calls += message.get("tool_calls") or []
+                    if chunk.get("done"):
+                        last = chunk
+                break
+            except ContextOverflow as exc:
+                # The estimate was short of the server's count: fit again with its numbers.
+                if received or attempt == 2:
+                    raise PipelineError(
+                        f"This is more than {entry.label} can read at once even after shortening it "
+                        f"({exc}). Start a new chat, or ask about a smaller part."
+                    ) from exc
+                budget = shrink(budget, sent, exc.prompt_tokens, exc.context)
         if not calls or not offered:
             yield {"type": "done", "model": entry.id, "stats": _stats(last)}
             return

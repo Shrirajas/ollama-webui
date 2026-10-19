@@ -4,8 +4,12 @@ from pydantic import BaseModel, Field
 
 
 class ChatFile(BaseModel):
+    """A file attached to a message: its `id` from /api/files (the text stays on the server),
+    or, from an older client, its whole text in `content`."""
+
     name: str
-    content: str
+    id: str | None = None
+    content: str = ""
 
 
 class ChatMessage(BaseModel):

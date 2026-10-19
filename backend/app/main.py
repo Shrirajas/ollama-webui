@@ -11,7 +11,7 @@ from document_engine.invoices import InvoiceService
 from document_engine.word import WordService
 from ollama_pipeline import Registry, Router, load_config
 from sql_connector import ConnectionStore
-from workspace_engine import WorkspaceService
+from workspace_engine import ChatFiles, Embedder, WorkspaceService
 from agent_skills import MemoryStore, SkillSettings
 
 from .documents import Library, Store, router as documents_router
@@ -42,7 +42,9 @@ async def lifespan(app: FastAPI):
     app.state.store = Store(settings.documents_dir, config.documents.keep_hours)
     app.state.library = Library(settings.documents_dir.parent / "templates")
     app.state.sql_store = ConnectionStore(settings.sql_dir)
-    app.state.workspaces = WorkspaceService(app.state.registry, settings.workspaces_dir)
+    embedding = Embedder(app.state.registry)  # one, so workspaces and chat files share its state
+    app.state.workspaces = WorkspaceService(app.state.registry, settings.workspaces_dir, embedding)
+    app.state.chatfiles = ChatFiles(app.state.registry, settings.chatfiles_dir, embedding, config.documents.keep_hours)
     app.state.skills = SkillSettings(settings.admin_dir)
     app.state.memory = MemoryStore(settings.admin_dir)
     yield

@@ -7,6 +7,7 @@ package talks to a model; the chat pipeline runs the tool calls it gets back.
 
 from .connectors import ENGINES, Connection, DatabaseError, check_fields, connector, missing_driver
 from .safety import UnsafeQuery, check
+from .sheets import SheetError, as_markdown, describe, import_file, is_spreadsheet
 from .store import ConnectionStore, slug
 from .tools import SqlTools
 
@@ -15,11 +16,16 @@ __all__ = [
     "Connection",
     "ConnectionStore",
     "DatabaseError",
+    "SheetError",
     "SqlTools",
     "UnsafeQuery",
+    "as_markdown",
     "check",
     "check_fields",
     "connector",
+    "describe",
+    "import_file",
+    "is_spreadsheet",
     "missing_driver",
     "slug",
 ]

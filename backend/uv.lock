@@ -1727,12 +1727,14 @@ name = "sql-connector"
 version = "0.1.0"
 source = { editable = "../sql" }
 dependencies = [
+    { name = "openpyxl" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pymysql" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "openpyxl", specifier = ">=3.1" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
     { name = "pymysql", specifier = ">=1.1" },
 ]

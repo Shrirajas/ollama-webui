@@ -8,6 +8,7 @@ dependencies = [
     # when a connection of its kind is used, so a missing one never stops the app.
     "psycopg[binary]>=3.2",  # PostgreSQL
     "pymysql>=1.1",          # MySQL and MariaDB
+    "openpyxl>=3.1",         # attached Excel files, loaded into SQLite tables (sheets.py)
 ]
 
 [build-system]

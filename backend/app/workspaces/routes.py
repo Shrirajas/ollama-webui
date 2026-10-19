@@ -47,8 +47,10 @@ def _stream(events: AsyncIterator[dict]) -> StreamingResponse:
     return StreamingResponse(lines(), media_type="application/x-ndjson", headers=_STREAM)
 
 
-def _read(name: str, data: bytes) -> tuple[list[tuple[str, str]], bool, int | None]:
-    """A file -> (sections, truncated, pages). A PDF keeps its pages, so a passage can name its page."""
+def read_file(name: str, data: bytes) -> tuple[list[tuple[str, str]], bool, int | None]:
+    """A file -> (sections, truncated, pages). A PDF keeps its pages, so a passage can name its page.
+
+    Also used for files attached in the chat (app/routes.py)."""
     if PurePath(name).suffix.lower() in _PICTURES:
         raise UnsupportedDocument(f"{name} is a picture. Workspaces read text: PDF, Word, Excel, CSV and text files.")
     if PurePath(name).suffix.lower() == ".pdf" or data.startswith(b"%PDF-"):
@@ -129,7 +131,7 @@ async def add_document(workspace_id: str, file: UploadFile, request: Request):
     async def events() -> AsyncIterator[dict]:
         yield {"type": "progress", "name": name, "message": "Reading the text"}
         try:
-            sections, truncated, pages = await run_in_threadpool(_read, name, data)
+            sections, truncated, pages = await run_in_threadpool(read_file, name, data)
         except UnsupportedDocument as exc:
             raise WorkspaceError(str(exc)) from exc
         except ImportError as exc:

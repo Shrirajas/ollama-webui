@@ -7,6 +7,7 @@ import tempfile
 from pathlib import Path
 
 from .connectors import Connection, DatabaseError, Postgres, check_fields, connector
+from .sheets import SheetError, as_markdown, describe, import_file
 from .safety import UnsafeQuery, check
 from .store import ConnectionStore
 from .tools import SqlTools
@@ -142,7 +143,50 @@ def main() -> None:
             pass
         assert store.delete("sales-db") and store.all() == []
 
-    print("SQL connector: query checks, SQLite, read-only lock, tools and saved connections all pass.")
+    # Spreadsheets into tables: a title above the header, Indian number commas, ₹, day-first dates,
+    # PIN codes with leading zeros, an empty sheet; then a total by SQL instead of by reading.
+    with tempfile.TemporaryDirectory() as tmp:
+        csv_data = ("Sales report Q1,,,\n,,,\nRegion,Month,Amount (₹),PIN\n"
+                    "North,31/01/2026,\"1,23,456.50\",011001\nSouth,28/02/2026,₹500,560001\n").encode()
+        tables = import_file("sales.csv", csv_data, Path(tmp) / "csv.db")
+        columns = {c["name"]: c["type"] for c in tables[0]["columns"]}
+        assert columns == {"region": "TEXT", "month": "DATE", "amount": "REAL", "pin": "TEXT"}, columns
+        assert tables[0]["title"] == "Sales report Q1" and tables[0]["rows"] == 2
+        tools = SqlTools([Connection(id="sales.csv", engine="sqlite", path=str(Path(tmp) / "csv.db"))],
+                         about={"sales.csv": describe(tables, "sales.csv")})
+        assert "amount REAL" in tools.system_prompt()
+        text, event = asyncio.run(tools.run("query", {"sql_query": "SELECT SUM(amount), MIN(month), MAX(pin) FROM sales"}))
+        assert json.loads(text)["rows"] == [[123956.5, "2026-01-31", "560001"]], text
+
+        from openpyxl import Workbook
+        import datetime
+        import io
+        book = Workbook()
+        sheet = book.active
+        sheet.title = "Invoices 2026"
+        sheet.append(["ACME Pvt Ltd - invoice register"])
+        sheet.append([])
+        sheet.append(["Invoice No", "Date", "Customer", "Total"])
+        for i in range(3000):
+            sheet.append([f"INV-{i:04d}", datetime.datetime(2026, 1 + i % 12, 1 + i % 28), ["Asha", "Ravi"][i % 2], 100 + i])
+        book.create_sheet("Empty")
+        data = io.BytesIO()
+        book.save(data)
+        tables = import_file("register.xlsx", data.getvalue(), Path(tmp) / "xlsx.db")
+        assert [t["table"] for t in tables] == ["invoices_2026"] and tables[0]["rows"] == 3000
+        db = sqlite3.connect(Path(tmp) / "xlsx.db")
+        assert db.execute("SELECT customer, COUNT(*), SUM(total) FROM invoices_2026 GROUP BY customer").fetchall() == \
+            [("Asha", 1500, 1500 * 100 + sum(range(0, 3000, 2))), ("Ravi", 1500, 1500 * 100 + sum(range(1, 3000, 2)))]
+        db.close()
+        small = import_file("t.csv", b"Name,Total\nA,1\nB,2\n", Path(tmp) / "t.db")
+        assert as_markdown(Path(tmp) / "t.db", small).splitlines()[1:4] == ["| name | total |", "| --- | --- |", "| A | 1 |"]
+        try:
+            import_file("notes.txt", b"hello", Path(tmp) / "x.db")
+            raise AssertionError("a text file was taken as a spreadsheet")
+        except SheetError:
+            pass
+
+    print("SQL connector: query checks, SQLite, read-only lock, tools, saved connections and spreadsheets all pass.")
 
 
 if __name__ == "__main__":
