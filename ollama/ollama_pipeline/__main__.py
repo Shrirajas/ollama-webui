@@ -11,9 +11,15 @@ async def main() -> int:
     try:
         print(f"config     {config_dir()}")
         health = await registry.health()
+        # A host that only serves the workspaces' embedding model is optional: without it,
+        # workspaces search by words. It does not make this check fail.
+        used = {m.host for m in registry.config.models}
+        optional = {registry.config.workspaces.embed_host} - used
         for name, info in health.items():
             server = "" if registry.kind(name) == "llamacpp" else "Ollama "  # llama-server's version names itself
             state = f"ok ({server}{info['version']})" if info["ok"] else "UNREACHABLE"
+            if name in optional:
+                state += "  (embeddings for workspaces, optional)"
             print(f"host {name:<10} {info['url']:<32} {state}")
 
         missing = []
@@ -32,7 +38,7 @@ async def main() -> int:
             print("\nPull the missing models with:")
             for model in dict.fromkeys(missing):
                 print(f"  ollama pull {model}")
-        return 0 if all(info["ok"] for info in health.values()) else 1
+        return 0 if all(info["ok"] for name, info in health.items() if name not in optional) else 1
     finally:
         await registry.aclose()
 

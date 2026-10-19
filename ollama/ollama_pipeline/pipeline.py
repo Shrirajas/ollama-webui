@@ -113,13 +113,14 @@ async def select_model(
 
 
 async def select_tool_model(
-    registry: Registry, model_id: str | None, preferred: str = ""
+    registry: Registry, model_id: str | None, preferred: str = "", source: str = "database"
 ) -> tuple[ModelEntry, dict[str, Any]]:
     """The local model for a chat that uses tools, and a `route` event saying so.
 
     The picked model when it is local and can call tools; otherwise `preferred`
     (an id from models.yaml), else the first local model that can. Never a
-    cloud model: what the tools return stays on this machine.
+    cloud model: what the tools return stays on this machine. `source` goes
+    into the route event: "database", or "skills" for charts and memory.
     """
     note = None
     if model_id not in (AUTO_ID, None):
@@ -128,7 +129,7 @@ async def select_tool_model(
             return picked, {"type": "route", "model": picked.id, "label": picked.label, "route": None,
                             "source": "picked", "confidence": None}
         why = "runs in the cloud" if picked.provider == OPENCODE else "cannot call tools"
-        note = f"{picked.label} {why}, so a local model that can answers from the database."
+        note = f"{picked.label} {why}, so a local model that can use tools answers."
 
     entries = [e for e in await registry.list_models() if e.available and e.provider != OPENCODE]
     chosen = next((e for e in entries if e.id == preferred and e.tools is not False), None)
@@ -137,11 +138,11 @@ async def select_tool_model(
         if not entries:
             await registry.resolve(None)  # raises the usual clear error: Ollama down, or nothing pulled
         raise ModelNotFound(
-            "None of the local models here can call tools, which answering from a database needs. "
+            "None of the local models here can call tools, which this needs (a database, a chart or memory). "
             "Pull one that can, e.g. `ollama pull qwen3:14b`."
         )
     event = {"type": "route", "model": chosen.id, "label": chosen.label, "route": None,
-             "source": "database", "confidence": None}
+             "source": source, "confidence": None}
     if note:
         event["note"] = note
     return chosen, event

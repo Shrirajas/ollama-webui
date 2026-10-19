@@ -6,21 +6,29 @@ import sqlite3
 import tempfile
 from pathlib import Path
 
-from .connectors import Connection, DatabaseError, check_fields, connector
+from .connectors import Connection, DatabaseError, Postgres, check_fields, connector
 from .safety import UnsafeQuery, check
 from .store import ConnectionStore
 from .tools import SqlTools
 
-READS = [
-    "SELECT * FROM staff WHERE first_name LIKE 'sam%'",
-    "select count(*) from orders;",
-    "WITH t AS (SELECT 1 AS n) SELECT n FROM t",
-    "SELECT 'drop table x; delete' AS note -- update in a comment",
-    "SELECT owner, comment, status, replace(name, 'a', 'b') FROM pets",
-    "EXPLAIN SELECT 1",
-    "SHOW TABLES",
+READS = [  # (query, the database it is read for)
+    ("SELECT * FROM staff WHERE first_name LIKE 'sam%'", "postgresql"),
+    ("select count(*) from orders;", "sqlite"),
+    ("WITH t AS (SELECT 1 AS n) SELECT n FROM t", "postgresql"),
+    ("SELECT 'drop table x; delete' AS note", "postgresql"),
+    ("SELECT owner, comment, status, replace(name, 'a', 'b') FROM pets", "mysql"),
+    ("SELECT 5 # 3", "postgresql"),  # XOR in PostgreSQL, not a comment
+    ("SELECT 'it''s', 'a\\' FROM t", "postgresql"),
+    ("SELECT 'it\\'s' FROM t", "mysql"),
+    ("EXPLAIN SELECT 1", "sqlite"),
+    ("SHOW TABLES", "mysql"),
 ]
 WRITES = [
+    # Each of the next three passed before 20 October 2026: the check read strings and comments the MySQL way.
+    ("SELECT 1 # x; COMMIT; SET default_transaction_read_only = off; DELETE FROM orders", "postgresql"),
+    ("SELECT 'a\\' ; DELETE FROM orders; --'", "postgresql"),
+    ("SELECT 1--1 INTO OUTFILE '/tmp/x'", "mysql"),
+    ("SELECT 1 -- a comment", "sqlite"),
     "DELETE FROM orders",
     "drop table orders",
     "SELECT 1; DELETE FROM orders",
@@ -56,14 +64,24 @@ def _sample(folder: Path) -> Path:
 
 
 def main() -> None:
-    for sql in READS:
-        check(sql)
-    for sql in WRITES:
+    for sql, engine in READS:
+        check(sql, engine)
+    for item in WRITES:
+        sql, engine = item if isinstance(item, tuple) else (item, "postgresql")
         try:
-            check(sql)
+            check(sql, engine)
         except UnsafeQuery:
             continue
         raise AssertionError(f"not refused: {sql!r}")
+
+    # PostgreSQL runs every statement of a text sent without parameters; a prepared statement holds one.
+    class Cursor:
+        def execute(self, sql, params=None, prepare=None):
+            self.call = (sql, params, prepare)
+
+    cur = Cursor()
+    Postgres(Connection(id="pg", engine="postgresql"))._execute(cur, "SELECT 1", None)
+    assert cur.call == ("SELECT 1", None, True), cur.call
 
     with tempfile.TemporaryDirectory() as tmp:
         folder = Path(tmp)

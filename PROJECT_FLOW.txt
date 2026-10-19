@@ -12,6 +12,7 @@ FOLDERS (each has one job; calls only go frontend -> backend -> documents -> oll
               word.html - its Word document tab: sources into a designed document.
               databases.html - saved database connections (the SQL connector).
               workspaces.html - workspaces and their documents (document search).
+              admin.html - the Admin panel: agent skills on/off, memories.
               Talks to the backend only through /api/* over HTTP.
   backend/    FastAPI app (Python). Receives HTTP requests, calls the
               ollama_pipeline package, and serves frontend/ at "/".
@@ -64,6 +65,9 @@ FOLDERS (each has one job; calls only go frontend -> backend -> documents -> oll
                 workspace_engine/prompts.py   what the model is told
               Its HTTP side is backend/app/workspaces/ (/api/workspaces ...); the chat
               side is /api/chat with `workspace` set.
+  skills/     Agent skills (package agent_skills): charts and memory, the
+              admin's switches, and the toolbox that puts one chat's tools
+              together. Its HTTP side is backend/app/admin/ (/api/admin, /api/skills).
   run.sh      starts the backend on http://127.0.0.1:8000
   run.ps1     the same for Windows PowerShell
 
@@ -201,6 +205,12 @@ WORKSPACES (a workspace picked in the chat's left panel)
   POST /api/chat {model, messages, workspace} -> the last question is searched in
   the workspace (words + meaning) -> the best passages go into the system message,
   numbered -> a local model answers citing [n] -> a `sources` event lists them.
+
+AGENT SKILLS (switched on and off on the Admin panel)
+  /api/chat offers a skill's tools only when the message needs it: create_chart
+  (a chart asked for, or a database / workspace picked), save_memory and
+  forget_memory (remember / forget). The memories of the workspace (or
+  "general") go into the system message of every local reply.
 
 LLAMA.CPP (instead of Ollama)
   A host in models.yaml written {url: ..., kind: llamacpp} is a llama-server.

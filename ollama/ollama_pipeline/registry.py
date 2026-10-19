@@ -31,6 +31,11 @@ class ModelEntry:
     options: dict[str, Any] = field(default_factory=dict)
     provider: str = "ollama"  # "opencode" = answered in the cloud, not on this machine
 
+    @property
+    def local(self) -> bool:
+        """Answered on this machine (Ollama or llama-server), not in the cloud."""
+        return self.provider != OPENCODE
+
     def public(self) -> dict[str, Any]:
         data = asdict(self)
         del data["system"], data["options"]

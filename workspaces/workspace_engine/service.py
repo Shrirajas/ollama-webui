@@ -191,11 +191,17 @@ class WorkspaceService:
             return asked[-2] + "\n" + last
         return last
 
-    async def context(self, workspace_id: str, messages: list[dict[str, Any]]) -> tuple[str, dict[str, Any]]:
-        """The instructions and passages for a chat reply, and a `sources` event for the page."""
+    async def context(self, workspace_id: str, messages: list[dict[str, Any]]) -> tuple[str, dict[str, Any] | None]:
+        """The instructions and passages for a chat reply, and a `sources` event for the page.
+
+        ("", None) when the last message has no text to search for.
+        """
         workspace = self.store.get(workspace_id)
         meta = workspace.meta()
-        hits, mode = await self.search(workspace_id, self.question(messages))
+        question = self.question(messages)
+        if not question.strip():
+            return "", None  # a message with only a picture: nothing to search for, so no passages
+        hits, mode = await self.search(workspace_id, question)
         items = [
             {"n": i, "document": h.document, "label": h.label, "matched_by": h.matched_by,
              "text": h.text if len(h.text) <= SNIPPET else h.text[:SNIPPET].rstrip() + " …"}

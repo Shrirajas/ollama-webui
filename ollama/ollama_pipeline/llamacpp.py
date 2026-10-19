@@ -47,15 +47,24 @@ _OPTIONS = {
 }
 
 
+def _explain(text: str) -> str:
+    """llama-server's own error, with what to do about it when that is known."""
+    if "jinja" in text.lower():
+        return f"{text}. Start this llama-server with --jinja so its model can call tools."
+    if "mmproj" in text.lower() or "image input is not supported" in text.lower():
+        return f"{text}. Start this llama-server with --mmproj so its model can read pictures."
+    return text
+
+
 def _error_text(response: httpx.Response) -> str:
     try:
         data = response.json()
     except ValueError:
-        return response.text or f"llama-server returned HTTP {response.status_code}"
+        return _explain(response.text or f"llama-server returned HTTP {response.status_code}")
     error = data.get("error") if isinstance(data, dict) else None
     if isinstance(error, dict):
-        return error.get("message") or json.dumps(error)
-    return error or response.text
+        return _explain(error.get("message") or json.dumps(error))
+    return _explain(str(error or response.text))
 
 
 def _messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -265,7 +274,7 @@ class LlamaCppClient:
 
 
 def _error_text_from(error: Any) -> str:
-    return error.get("message") or json.dumps(error) if isinstance(error, dict) else str(error)
+    return _explain(error.get("message") or json.dumps(error) if isinstance(error, dict) else str(error))
 
 
 def _stats(timings: dict[str, Any]) -> dict[str, Any]:

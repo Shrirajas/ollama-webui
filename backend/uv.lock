@@ -25,6 +25,11 @@ wheels = [
 ]
 
 [[package]]
+name = "agent-skills"
+version = "0.1.0"
+source = { editable = "../skills" }
+
+[[package]]
 name = "annotated-doc"
 version = "0.0.5"
 source = { registry = "https://pypi.org/simple" }
@@ -217,6 +222,7 @@ name = "fastshot-backend"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "agent-skills" },
     { name = "document-engine" },
     { name = "fastapi" },
     { name = "ollama-pipeline" },
@@ -234,6 +240,7 @@ router = [
 
 [package.metadata]
 requires-dist = [
+    { name = "agent-skills", editable = "../skills" },
     { name = "document-engine", editable = "../documents" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "ollama-pipeline", editable = "../ollama" },

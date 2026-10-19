@@ -17,10 +17,11 @@
 # Do not edit by hand. After changing a pyproject.toml, regenerate everything
 # below this header with:
 #   cd backend && uv export --format requirements-txt --no-hashes --no-annotate --no-header --extra router
-# and change `-e ../ollama` to `-e ./ollama`, `-e ../documents` to `-e ./documents`, `-e ../sql` to `-e ./sql` and `-e ../workspaces` to `-e ./workspaces`.
+# and change `-e ../ollama` to `-e ./ollama`, `-e ../documents` to `-e ./documents`, `-e ../sql` to `-e ./sql`, `-e ../workspaces` to `-e ./workspaces` and `-e ../skills` to `-e ./skills`.
 
 -e ./documents
 -e ./ollama
+-e ./skills
 -e ./sql
 -e ./workspaces
 accelerate==1.15.0 ; python_full_version >= '3.12'

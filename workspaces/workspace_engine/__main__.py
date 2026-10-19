@@ -78,6 +78,15 @@ def main() -> None:
         except Exception as exc:
             assert "already exists" in str(exc)
 
+        # Names in any language: the id is ASCII, the name keeps its letters.
+        for name in ("ಮಾನವ ಸಂಪನ್ಮೂಲ", "Finanzas año 2026"):
+            made = service.create(name)
+            assert made["name"] == name and service.store.get(made["id"]), made
+        assert sorted(w["name"] for w in service.list()) == ["Finanzas año 2026", "HR policies", "ಮಾನವ ಸಂಪನ್ಮೂಲ"]
+        for w in service.list():
+            if w["id"] != hr["id"]:
+                service.delete(w["id"])
+
         events = asyncio.run(collect(service.add(hr["id"], "leave.txt", LEAVE.encode(), [("", LEAVE)], False)))
         assert events[-1]["type"] == "added" and events[-1]["by_meaning"], events
         events = asyncio.run(collect(service.add(hr["id"], "travel.pdf", TRAVEL.encode(), [("page 1", TRAVEL)], False, 1)))

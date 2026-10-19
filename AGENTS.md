@@ -13,7 +13,7 @@ OpenCode's free cloud models.
 
 ## Running the `tools` branch on the server (llama.cpp, SQL connector, workspaces)
 
-This branch adds three things (Workspaces has its own section below), and a round of UI fixes:
+This branch adds four things (Workspaces and Agent skills have their own sections below), and a round of fixes:
 
 - **llama.cpp instead of Ollama.** The server runs llama.cpp's `llama-server`
   with Gemma 4 12B and Llama 3.1 8B, not Ollama. A host in `models.yaml`
@@ -34,7 +34,7 @@ Steps on the server:
 
 1. **Get the branch.** `git fetch && git checkout tools`
 2. **Install the new packages** (`psycopg[binary]`, `pymysql`, `numpy`, the
-   project's own `sql/` and `workspaces/`): `pip install -r requirements.txt`, or
+   project's own `sql/`, `workspaces/` and `skills/`): `pip install -r requirements.txt`, or
    `cd backend && uv sync --extra router --inexact`. SQLite needs nothing.
 3. **Start both llama-servers with `--jinja`** (tool calls need it), Gemma
    with `--mmproj` (pictures). The commands are at the top of
@@ -144,6 +144,72 @@ Not done, check these on the server:
 - Scanned PDFs have no text and are refused, as in the chat.
 - There are no logins yet: anyone who can open the app can see and delete
   every workspace.
+
+### Agent skills (charts, memory) and the Admin panel
+
+Modelled on AnythingLLM's agent skills (`rechart`, `memory`) and its Admin ->
+Agent Skills page. Code: `skills/agent_skills/` (package `agent_skills`, no
+model in it), `backend/app/admin/routes.py`, `frontend/admin.html`.
+
+- **Charts.** The model calls `create_chart` with the kind (bar, line, area,
+  pie), labels and series; `charts.py` checks the numbers ("₹1,200" becomes
+  1200, a series must have one value per label) and the chat draws the chart
+  as SVG, with no chart library, so it works offline. A wrong call is sent back
+  with the reason so the model can fix it.
+- **Memory.** Short facts per workspace, plus a "general" list for chats
+  without one, in `backend/data/admin/memories.json`. Every chat answered by a
+  local model gets its scope's memories in the system message (never a cloud
+  model). Admins add, edit and remove them on the Admin panel; in the chat the
+  model saves or forgets one only when the user asks (`save_memory`,
+  `forget_memory`), if "Save and forget from the chat" is on. When several
+  memories could be meant, nothing is forgotten and the model is told to ask.
+- **Switches** (`backend/data/admin/skills.json`): Database queries, Charts,
+  Memory, Save and forget from the chat. All on by default. With Database
+  queries off, the chat hides the database picker and `/api/chat` refuses a
+  database (403).
+- **A skill is offered only when the message needs it** (`toolbox.py`): charts
+  with a database or workspace picked or when a chart is asked for; the memory
+  tools when the message says remember or forget. Small models call tools
+  they do not need, so an everyday chat gets none. A message that does get a
+  skill is answered by `sql.model` (the local model that calls tools).
+- **The Admin panel needs `ADMIN_PASSWORD`** in `backend/.env`. Without it
+  the panel is closed (403); a wrong password waits a second. It stands in
+  for users and roles, which do not exist yet. The Databases and Workspaces
+  pages are still open to everyone.
+
+On the server: set `ADMIN_PASSWORD`, restart, open
+<http://127.0.0.1:8000/admin.html>. Check without a model:
+`cd backend && python -m agent_skills`.
+
+Not done, check these on the server:
+- **No real model has called `create_chart`, `save_memory` or
+  `forget_memory`**, only a stand-in. Check that Llama 3.1 8B copies the
+  numbers exactly and saves a memory only when asked.
+- Charts were looked at in Chromium only.
+
+### Fixed in this round (review of the branch)
+
+- **SQL, critical:** on PostgreSQL a crafted query could run a write. psycopg
+  runs every statement of a query sent without parameters, and the text check
+  read `#` and `\'` the MySQL way, so `SELECT 1 # x; COMMIT; SET
+  default_transaction_read_only = off; DELETE FROM orders` passed it. Now
+  PostgreSQL queries go as prepared statements (one statement only), the
+  check reads strings as each database does and refuses comments, and MySQL
+  sessions are read-only too. The bypasses are in `python -m sql_connector`.
+- Workspaces with names in Kannada, Hindi or with accents could not be
+  created; ids are now ASCII (`workspace-<random>` when nothing is left).
+- A picture sent alone in a workspace no longer searches for nothing.
+- `python -m ollama_pipeline` no longer fails when only the optional
+  embeddings server is down.
+- llama-server's "--jinja" and "mmproj" errors now say what to start it with.
+- A database lookup cut off by Stop no longer shows "Running a query…".
+- **Documents pages:** the six tabs are gone. `documents.html` opens on four
+  tasks (Create a new document, Fill in a template, Change a document, Read
+  invoices into a sheet); each task shows its steps and what the button is
+  waiting for. "Write a new one" was folded into Create a new document
+  (`word.html`, which has the letterhead too); saved templates are offered
+  right where a template is chosen. `documents.html#create` goes to
+  `word.html`. The chat's menu lost its two placeholder links.
 
 UI fixes in this branch: the chat composer's text, chips and model name no
 longer shrink below a readable size on laptop screens (floors, positions
@@ -926,6 +992,9 @@ frontend/databases.html          its page
 ollama/ollama_pipeline/llamacpp.py   llama-server client (hosts with kind: llamacpp)
 ollama/config.llamacpp/          models.yaml for llama-server: Gemma 4 12B + Llama 3.1 8B
 workspaces/workspace_engine/     workspaces: passages, index (SQLite FTS5 + vectors), search, prompts
+skills/agent_skills/             agent skills: charts, memory, the switches, the per-message toolbox
+backend/app/admin/               the Admin panel's routes (/api/admin, /api/skills)
+frontend/admin.html              the Admin panel
 backend/app/workspaces/          its HTTP routes (/api/workspaces)
 frontend/workspaces.html         its page; the chat's left panel picks a workspace
 backend/app/documents/           its HTTP routes and storage
@@ -957,6 +1026,6 @@ run.sh, run.ps1                  start the app (macOS/Linux, Windows)
 
 ## Not built yet
 
-No login, no saved chat history, no text from scanned PDFs, Figma links are
+No login (the Admin panel has one shared password), no saved chat history, no text from scanned PDFs, Figma links are
 passed as text only, no paid cloud models (e.g. Claude) - only OpenCode's
 free tier.

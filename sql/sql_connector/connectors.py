@@ -128,6 +128,14 @@ class Connector:
     def _timed_out(self, exc: BaseException) -> bool:
         return False
 
+    def _execute(self, cur: Any, sql: str, params: Sequence[Any] | None) -> None:
+        """Runs exactly one statement. SQLite and PyMySQL refuse a second one by themselves."""
+        # Parameters only when there are any: without them a literal % in the query is left alone.
+        if params:
+            cur.execute(sql, params)
+        else:
+            cur.execute(sql)
+
     def run(self, sql: str, params: Sequence[Any] | None = None, max_rows: int = 200) -> Result:
         """Runs one statement and reads at most `max_rows` rows. Never commits."""
         try:
@@ -139,11 +147,7 @@ class Connector:
         try:
             self._begin(con)
             cur = con.cursor()
-            # Parameters only when there are any: without them a literal % in the query is left alone.
-            if params:
-                cur.execute(sql, params)
-            else:
-                cur.execute(sql)
+            self._execute(cur, sql, params)
             result = Result(columns=[d[0] for d in cur.description or []])
             if cur.description:
                 rows = cur.fetchmany(max_rows + 1)
@@ -230,6 +234,11 @@ class Postgres(Connector):
     def _begin(self, con):
         con.read_only = True
 
+    def _execute(self, cur, sql, params):
+        # Without parameters psycopg uses PostgreSQL's simple protocol, which runs every
+        # statement in the text ("SELECT 1; COMMIT; ..."). A prepared statement holds one.
+        cur.execute(sql, params or None, prepare=True)
+
     def _timed_out(self, exc):
         return "statement timeout" in str(exc)
 
@@ -277,6 +286,8 @@ class MySQL(Connector):
                 break
             except Exception:
                 continue
+        # The session as well as this transaction: a later transaction is read-only too.
+        cur.execute("SET SESSION TRANSACTION READ ONLY")
         cur.execute("START TRANSACTION READ ONLY")
 
     def _timed_out(self, exc):

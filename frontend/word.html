@@ -161,6 +161,8 @@ a.btn[aria-disabled="true"]{opacity:.45;pointer-events:none}
 .links a{flex:none}
 @media (max-width:620px){.links a{padding:7px 9px;font-size:13.5px}}
 a.mini{display:inline-flex;align-items:center}
+.back{display:inline-block;margin-bottom:12px;font-size:14px;color:#D5D5D8}
+.back:hover{color:#fff}
 </style>
 </head>
 <body>
@@ -179,20 +181,13 @@ a.mini{display:inline-flex;align-items:center}
       <a href="workspaces.html">Workspaces</a>
       <a href="documents.html" aria-current="page">Documents</a>
       <a href="databases.html">Databases</a>
+      <a href="admin.html">Admin</a>
     </nav>
   </header>
 
-  <h1>A designed Word document</h1>
-  <p class="lede">Add the files to work from: PDFs, Word files, Excel sheets, CSV or text. A model on this machine reads them together and writes the document; the app turns that into a Word file with a cover, numbered sections, tables and highlighted boxes. Download it as Word or as PDF. Nothing leaves this machine.</p>
-
-  <nav class="modes" aria-label="Documents">
-    <a class="mode" href="documents.html#fill">Fill a template</a>
-    <a class="mode" href="documents.html#edit">Change a document</a>
-    <a class="mode" href="documents.html#create">Write a new one</a>
-    <a class="mode" href="documents.html#library">Template library</a>
-    <a class="mode" href="word.html" aria-current="page">Word document</a>
-    <a class="mode" href="invoices.html">Invoices</a>
-  </nav>
+  <a class="back" href="documents.html">← All document tasks</a>
+  <h1>Create a new document</h1>
+  <p class="lede">Say what you need and add the files to work from: PDFs, Word files, Excel sheets, CSV or text. A model on this machine reads them and writes the document; you choose its look and download it as Word or PDF. Nothing leaves this machine.</p>
 
   <!-- What goes in -->
   <section class="card" id="inputs">

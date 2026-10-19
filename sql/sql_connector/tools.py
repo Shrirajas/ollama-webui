@@ -136,7 +136,7 @@ class SqlTools:
             elif name == "query":
                 sql = str(args.get("sql_query") or args.get("sql") or args.get("query") or "")
                 event["sql"] = sql
-                result = await asyncio.to_thread(db.run, check(sql), None, self.max_rows)
+                result = await asyncio.to_thread(db.run, check(sql, connection.engine), None, self.max_rows)
             else:
                 raise DatabaseError(f"There is no tool named '{name}'. Use list_tables, get_table_schema or query.")
         except (DatabaseError, UnsafeQuery) as exc:

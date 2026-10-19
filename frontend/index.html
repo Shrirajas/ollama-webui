@@ -303,7 +303,7 @@ button{cursor:pointer}
 .think-text{margin-top:6px;padding:2px 0 2px 10px;border-left:2px solid rgba(255,255,255,.10);white-space:pre-wrap;line-height:1.5;max-height:8.5em;overflow-y:auto;scrollbar-width:thin}
 .think.done .think-text{max-height:18em}
 /* A database lookup the model made: the query, then what came back. */
-.tool .think-text{white-space:normal;max-height:none}
+.think.tool .think-text,.think.tool.done .think-text{white-space:normal;max-height:none}
 .tool pre{margin:0 0 6px;white-space:pre-wrap;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.95em;color:#C9C9CC}
 .tool .tool-err{color:#FBBC94}
 .tool .tool-rows{max-height:14em;overflow:auto;scrollbar-width:thin}
@@ -405,6 +405,19 @@ button{cursor:pointer}
 .sources summary span{color:#8B8C8E}
 .sources .src-text{margin:4px 0 8px;padding:2px 0 2px 10px;border-left:2px solid rgba(255,255,255,.10);white-space:pre-wrap;line-height:1.5;max-height:12em;overflow-y:auto}
 .pill.ws{background:rgba(156,134,206,.18);color:#CDBFF0}
+
+/* A chart drawn from the create_chart skill */
+.chart{margin:4px 0 6px;padding:10px 12px 8px;border-radius:12px;background:rgba(0,0,0,.22);max-width:640px}
+.chart-title{font-size:var(--ui-fs);font-weight:500;color:#ECECEF;margin-bottom:4px}
+.chart svg{width:100%;height:auto;display:block}
+.chart .c-grid{stroke:rgba(255,255,255,.07)}
+.chart .c-zero{stroke:rgba(255,255,255,.28)}
+.chart .c-label{fill:#98999C;font-size:11px;font-family:inherit}
+.chart-foot{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;margin-top:4px;font-size:var(--ui-sm);color:#98999C}
+.chart-key::before{content:"";display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;background:var(--c)}
+.chart-axis{font-style:italic}
+.chart-copy{margin-left:auto;padding:3px 10px;border-radius:8px;color:#D5D5D8;background:rgba(255,255,255,.07)}
+.chart-copy:hover{background:rgba(255,255,255,.14)}
 
 /* Readability floors. The design scales with the window (--u), which on a laptop screen made the
    composer's text 8-10px. Positions stay as designed; text, chips and their padding get a minimum. */
@@ -522,6 +535,7 @@ button{cursor:pointer}
   .anim .links a:nth-child(3){animation-delay:.26s}
   .anim .links a:nth-child(4){animation-delay:.31s}
   .anim .links a:nth-child(5){animation-delay:.36s}
+  .anim .links a:nth-child(6){animation-delay:.41s}
   .anim .nav>.cta{animation:e-settle-down .55s var(--e-soft) .34s both}
   .anim .h1{animation:e-focus 1s var(--e-primary) .30s both;will-change:transform,opacity}
   .anim .card{animation:e-panel .90s var(--e-primary) .62s both;will-change:transform,opacity}
@@ -580,11 +594,10 @@ button{cursor:pointer}
         <span class="word">Fastshot</span>
       </a>
       <nav class="links" aria-label="Primary">
-        <a href="#">Features</a>
-        <a href="#">Examples</a>
-        <a href="documents.html">Docs</a>
+        <a href="documents.html">Documents</a>
         <a href="workspaces.html">Workspaces</a>
         <a href="databases.html">Databases</a>
+        <a href="admin.html">Admin</a>
       </nav>
       <a class="cta" href="#" data-start><span>Get Started</span></a>
       <label class="burger" for="menu" aria-label="Menu">
@@ -595,11 +608,10 @@ button{cursor:pointer}
     <div class="sheet">
       <div class="sheet-inner">
         <div class="panel">
-          <a href="#">Features</a>
-          <a href="#">Examples</a>
-          <a href="documents.html">Docs</a>
+          <a href="documents.html">Documents</a>
           <a href="workspaces.html">Workspaces</a>
           <a href="databases.html">Databases</a>
+          <a href="admin.html">Admin</a>
           <a class="cta" href="#" data-start><span>Get Started</span></a>
         </div>
       </div>
@@ -742,6 +754,10 @@ button{cursor:pointer}
   }
   async function loadDatabases() {
     try {
+      /* Database answers can be turned off on the Admin panel: then there is nothing to pick. */
+      const on = await fetch(API + '/api/skills').then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
+      state.sqlOn = on.sql !== false;
+      if (!state.sqlOn) throw new Error('off');
       const res = await fetch(API + '/api/sql/connections');
       if (!res.ok) throw new Error(String(res.status));
       state.databases = (await res.json()).connections;
@@ -799,6 +815,7 @@ button{cursor:pointer}
 
   /* The model menu's second part: answer from a saved database, or not. */
   function renderDatabases() {
+    if (state.sqlOn === false) return;
     el.menu.append(node('p', 'menu-head', 'Answer from a database'));
     for (const d of [null, ...state.databases]) {
       const opt = node('button', 'opt');
@@ -1090,6 +1107,130 @@ button{cursor:pointer}
     el.prompt.focus();
   }
 
+  /* ── Charts (the create_chart skill): drawn here as SVG, no library, so it works offline ── */
+  const CHART_COLORS = ['#F49D70', '#8AB4F8', '#8FD3A8', '#C9A7F5', '#F2C66D', '#F28B9B'];
+  const svgNode = (tag, attrs, text) => {
+    const n = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    for (const [k, v] of Object.entries(attrs || {})) n.setAttribute(k, v);
+    if (text != null) n.textContent = text;
+    return n;
+  };
+  const fmt = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
+  const fmtShort = new Intl.NumberFormat('en-IN', { notation: 'compact', maximumFractionDigits: 1 });
+  /* Round tick values: 0, 250, 500 ... rather than 0, 237.4, 474.8 */
+  function ticks(min, max, count = 5) {
+    if (min === max) { max = min + 1; min = Math.min(0, min); }
+    const raw = (max - min) / count;
+    const step = [1, 2, 2.5, 5, 10].map((m) => m * 10 ** Math.floor(Math.log10(raw))).find((s) => s >= raw);
+    const out = [];
+    for (let v = Math.floor(min / step) * step; v <= max + step * 1e-9; v += step) out.push(+v.toFixed(10));
+    if (out[out.length - 1] < max) out.push(out[out.length - 1] + step);
+    return out;
+  }
+  function chartView(spec) {
+    const wrap = node('div', 'chart');
+    if (spec.title) wrap.append(node('div', 'chart-title', spec.title));
+    /* As wide as the reply has room for, so the labels keep their size on a phone. */
+    const W = Math.max(300, Math.min(640, Math.round(el.thread.clientWidth - 76)));
+    const narrow = W < 520;
+    const pieRows = spec.type === 'pie' && narrow ? spec.labels.length : 0;
+    const H = spec.type === 'pie' && narrow ? 236 + pieRows * 20 : narrow ? 250 : 300;
+    const svg = svgNode('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': spec.title || 'Chart' });
+    const series = spec.series, labels = spec.labels;
+    const color = (i) => CHART_COLORS[i % CHART_COLORS.length];
+
+    if (spec.type === 'pie') {
+      const values = series[0].values, total = values.reduce((a, b) => a + b, 0) || 1;
+      const cx = narrow ? W / 2 : 150, cy = narrow ? 112 : 150, r = narrow ? 100 : 120;
+      let angle = -Math.PI / 2;
+      values.forEach((v, i) => {
+        const a2 = angle + (v / total) * Math.PI * 2;
+        const large = a2 - angle > Math.PI ? 1 : 0;
+        const p = (a) => `${cx + r * Math.cos(a)} ${cy + r * Math.sin(a)}`;
+        const d = values.length === 1 ? `M ${cx - r} ${cy} a ${r} ${r} 0 1 0 ${2 * r} 0 a ${r} ${r} 0 1 0 ${-2 * r} 0`
+          : `M ${cx} ${cy} L ${p(angle)} A ${r} ${r} 0 ${large} 1 ${p(a2)} Z`;
+        const slice = svgNode('path', { d, fill: color(i), stroke: '#141417', 'stroke-width': 1.5 });
+        slice.append(svgNode('title', {}, `${labels[i]}: ${fmt.format(v)} (${Math.round((v / total) * 100)}%)`));
+        svg.append(slice);
+        angle = a2;
+      });
+      labels.forEach((label, i) => {
+        const y = narrow ? 240 + i * 20 : 40 + i * 20, x = narrow ? 8 : 320;
+        svg.append(svgNode('rect', { x, y: y - 10, width: 11, height: 11, rx: 2, fill: color(i) }));
+        svg.append(svgNode('text', { x: x + 18, y, class: 'c-label' },
+          `${label.length > 26 ? label.slice(0, 25) + '…' : label}  ${fmt.format(series[0].values[i])} · ${Math.round((series[0].values[i] / total) * 100)}%`));
+      });
+    } else {
+      const all = series.flatMap((s) => s.values);
+      const lo = Math.min(0, ...all), hi = Math.max(0, ...all);
+      const ys = ticks(lo, hi);
+      const left = narrow ? 44 : 58, right = 10, top = 14, bottom = labels.length > 8 || (narrow && labels.length > 4) ? 70 : 40;
+      const pw = W - left - right, ph = H - top - bottom;
+      const y = (v) => top + ph - ((v - ys[0]) / (ys[ys.length - 1] - ys[0])) * ph;
+      const band = pw / labels.length;
+      for (const t of ys) {
+        svg.append(svgNode('line', { x1: left, x2: W - right, y1: y(t), y2: y(t), class: t === 0 ? 'c-zero' : 'c-grid' }));
+        svg.append(svgNode('text', { x: left - 8, y: y(t) + 4, 'text-anchor': 'end', class: 'c-label' }, fmtShort.format(t)));
+      }
+      const every = Math.ceil(labels.length / 24); /* never more than 24 labels along the bottom */
+      labels.forEach((label, i) => {
+        if (i % every) return;
+        const x = left + band * (i + 0.5), short = label.length > 14 ? label.slice(0, 13) + '…' : label;
+        const attrs = labels.length > 8 || (narrow && labels.length > 4)
+          ? { x, y: H - bottom + 14, 'text-anchor': 'end', transform: `rotate(-35 ${x} ${H - bottom + 14})`, class: 'c-label' }
+          : { x, y: H - bottom + 18, 'text-anchor': 'middle', class: 'c-label' };
+        svg.append(svgNode('text', attrs, short));
+      });
+      if (spec.type === 'bar') {
+        const gw = band * 0.72, bw = gw / series.length;
+        series.forEach((s, si) => s.values.forEach((v, i) => {
+          const x = left + band * i + (band - gw) / 2 + bw * si, y0 = y(0), yv = y(v);
+          const bar = svgNode('rect', { x, y: Math.min(y0, yv), width: Math.max(1, bw - 2), height: Math.max(1, Math.abs(y0 - yv)), rx: 2, fill: color(si) });
+          bar.append(svgNode('title', {}, `${labels[i]} · ${s.name}: ${fmt.format(v)}`));
+          svg.append(bar);
+        }));
+      } else {
+        series.forEach((s, si) => {
+          const pts = s.values.map((v, i) => [left + band * (i + 0.5), y(v)]);
+          if (spec.type === 'area') {
+            const d = `M ${pts[0][0]} ${y(Math.max(0, ys[0]))} ` + pts.map((p) => `L ${p[0]} ${p[1]}`).join(' ') + ` L ${pts[pts.length - 1][0]} ${y(Math.max(0, ys[0]))} Z`;
+            svg.append(svgNode('path', { d, fill: color(si), opacity: 0.18 }));
+          }
+          svg.append(svgNode('polyline', { points: pts.map((p) => p.join(',')).join(' '), fill: 'none', stroke: color(si), 'stroke-width': 2.2, 'stroke-linejoin': 'round' }));
+          pts.forEach((p, i) => {
+            const dot = svgNode('circle', { cx: p[0], cy: p[1], r: labels.length > 30 ? 2 : 3.2, fill: color(si) });
+            dot.append(svgNode('title', {}, `${labels[i]} · ${s.name}: ${fmt.format(s.values[i])}`));
+            svg.append(dot);
+          });
+        });
+      }
+      if (spec.y_label) svg.append(svgNode('text', { x: 12, y: top + ph / 2, transform: `rotate(-90 12 ${top + ph / 2})`, 'text-anchor': 'middle', class: 'c-label' }, spec.y_label));
+    }
+    wrap.append(svg);
+
+    const foot = node('div', 'chart-foot');
+    if (spec.type !== 'pie' && series.length > 1) {
+      for (const [i, s] of series.entries()) {
+        const key = node('span', 'chart-key', s.name);
+        key.style.setProperty('--c', color(i));
+        foot.append(key);
+      }
+    }
+    if (spec.x_label && spec.type !== 'pie') foot.append(node('span', 'chart-axis', spec.x_label));
+    const copy = node('button', 'chart-copy', 'Copy data');
+    copy.type = 'button';
+    copy.addEventListener('click', async () => {
+      const rows = [[spec.x_label || 'Label', ...series.map((s) => s.name)].join('\t'),
+        ...labels.map((l, i) => [l, ...series.map((s) => s.values[i])].join('\t'))];
+      try { await navigator.clipboard.writeText(rows.join('\n')); copy.textContent = 'Copied'; }
+      catch { copy.textContent = 'Could not copy'; }
+      setTimeout(() => { copy.textContent = 'Copy data'; }, 1600);
+    });
+    foot.append(copy);
+    wrap.append(foot);
+    return wrap;
+  }
+
   /* ── Rendering ── */
   const escapeHtml = (s) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const inline = (s) => escapeHtml(s)
@@ -1206,7 +1347,10 @@ button{cursor:pointer}
       follow.keep();
     };
     /* One database lookup: what the model asked for, then what came back. */
-    const TOOL_NAMES = { list_databases: 'Listing databases', list_tables: 'Listing tables', get_table_schema: 'Reading columns', query: 'Running a query' };
+    const TOOL_NAMES = {
+      list_databases: 'Listing databases', list_tables: 'Listing tables', get_table_schema: 'Reading columns', query: 'Running a query',
+      create_chart: 'Making a chart', save_memory: 'Saving to memory', forget_memory: 'Forgetting',
+    };
     const addTool = (event) => {
       const box = node('details', 'think tool');
       const label = node('summary', '', (TOOL_NAMES[event.name] || event.name) + '…');
@@ -1221,10 +1365,24 @@ button{cursor:pointer}
     };
     const showToolResult = (t, event) => {
       t.box.classList.add('done');
-      const what = { list_databases: 'Listed databases', list_tables: 'Listed tables', get_table_schema: 'Read the columns of ' + (event.table || 'a table'), query: 'Ran a query' }[t.name] || t.name;
+      const what = {
+        list_databases: 'Listed databases', list_tables: 'Listed tables', get_table_schema: 'Read the columns of ' + (event.table || 'a table'),
+        query: 'Ran a query', create_chart: 'Made a chart', save_memory: 'Saved to memory', forget_memory: 'Forgot',
+      }[t.name] || t.name;
       if (event.error) {
         t.label.textContent = what + ' · refused or failed';
         t.text.append(node('div', 'tool-err', event.error));
+        return;
+      }
+      if (event.chart) { /* the chart stays open: it is part of the answer */
+        t.label.textContent = what + (event.chart.title ? ': ' + event.chart.title : '');
+        t.text.replaceChildren(chartView(event.chart));
+        t.box.open = true;
+        return;
+      }
+      if (t.name === 'save_memory' || t.name === 'forget_memory') {
+        t.label.textContent = event.saved ? 'Saved to memory' : event.forgotten ? 'Forgot' : 'Nothing forgotten';
+        t.text.append(node('div', '', event.memory || ''));
         return;
       }
       t.label.textContent = what + (event.database ? ' on ' + event.database : '') + ' · ' + event.rows + (event.rows === 1 ? ' row' : ' rows') + (event.truncated ? ' (more not read)' : '');
@@ -1297,6 +1455,7 @@ button{cursor:pointer}
             /* Auto picked a model for this message: show which one, and why on hover. */
             answeredBy = event.model;
             out.name.textContent = (event.source === 'database' ? 'Database · ' : event.source === 'picked' ? '' : 'Auto · ') + event.label;
+            if (event.source === 'skills') out.name.title = 'Picked because this message uses a skill (a chart or memory) that needs a local model that calls tools';
             out.name.title = event.source === 'database' || event.source === 'picked'
               ? 'Answers from the database "' + state.database + '", queried read-only on this machine'
               : 'Routed by ' + event.source
@@ -1342,6 +1501,11 @@ button{cursor:pointer}
     } finally {
       cancelAnimationFrame(frame);
       endThinking();
+      if (tool) { /* a lookup whose result never came: stopped, or the stream broke */
+        tool.box.classList.add('done');
+        tool.label.textContent = tool.label.textContent.replace(/…$/, '') + ' · stopped';
+        tool = null;
+      }
       out.bubble.classList.remove('live');
       if (answer) {
         paint();

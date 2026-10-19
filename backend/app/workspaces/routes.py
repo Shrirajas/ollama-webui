@@ -108,6 +108,7 @@ def delete(workspace_id: str, request: Request):
         _service(request).delete(workspace_id)
     except WorkspaceError as exc:
         raise HTTPException(404, str(exc)) from exc
+    request.app.state.memory.drop_scope(workspace_id)  # its memories go with it
     return {"ok": True}
 
 

@@ -18,6 +18,7 @@ from ollama_pipeline import (
     select_tool_model,
     todays_theme,
 )
+from agent_skills import GENERAL, ChartTool, MemoryTools, Toolbox, wants_chart, wants_memory
 from sql_connector import SqlTools
 from workspace_engine import WorkspaceError
 
@@ -83,24 +84,40 @@ async def chat(
     With `workspace` set the reply is based on the passages of that workspace's
     documents that match the question (a `sources` event lists them). With
     `database` set a local model queries that saved connection with the SQL
-    connector's tools. Either one keeps the reply on a local model.
+    connector's tools. The agent skills an admin has switched on are offered
+    when the message is about them: a chart, or something to remember. Any of
+    these keeps the reply on a local model, as do the memories it is given.
     """
     messages = [m.model_dump() for m in body.messages]
-    tools, sources, context = None, None, []
+    skills = request.app.state.skills.get()
+    asked = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
+    scope = body.workspace or GENERAL
+    sources, context, parts = None, [], []
     try:
         if body.workspace:
             try:
                 passages, sources = await request.app.state.workspaces.context(body.workspace, messages)
             except WorkspaceError as exc:
                 raise HTTPException(404, str(exc)) from exc
-            context.append(passages)
+            if passages:
+                context.append(passages)
         if body.database:
+            if not skills["sql"]:
+                raise HTTPException(403, "Answering from databases is turned off on the Admin panel.")
             connection = request.app.state.sql_store.get(body.database)
             if connection is None:
                 raise HTTPException(404, f"There is no saved database connection named '{body.database}'.")
             sql = registry.config.sql
-            tools = SqlTools([connection], max_rows=sql.max_rows, timeout=sql.timeout)
-            entry, route = await select_tool_model(registry, body.model, sql.model)
+            parts.append(SqlTools([connection], max_rows=sql.max_rows, timeout=sql.timeout))
+        if skills["charts"] and (body.database or body.workspace or wants_chart(asked)):
+            parts.append(ChartTool())
+        if skills["memory"] and skills["memory_from_chat"] and wants_memory(asked):
+            parts.append(MemoryTools(request.app.state.memory, scope))
+        tools = Toolbox(parts)
+
+        if tools:
+            source = "database" if body.database else "skills"
+            entry, route = await select_tool_model(registry, body.model, registry.config.sql.model, source)
             fallbacks = []
             context.append(tools.system_prompt())
         elif body.workspace:
@@ -114,6 +131,12 @@ async def chat(
         raise HTTPException(503, str(exc)) from exc
     except PipelineError as exc:
         raise HTTPException(400, str(exc)) from exc
+    # Memories go to a model on this machine only (a local model never falls back to the cloud).
+    if skills["memory"] and entry.local:
+        name = request.app.state.workspaces.store.get(body.workspace).meta()["name"] if body.workspace else ""
+        remembered = request.app.state.memory.prompt(scope, name)
+        if remembered:
+            context.append(remembered)
     if context:
         system = "\n\n".join(part for part in (entry.system, *context) if part)
         messages = [{"role": "system", "content": system}, *messages]

@@ -18,6 +18,7 @@ import shutil
 import sqlite3
 import threading
 import time
+import unicodedata
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -90,8 +91,15 @@ class Hit:
 
 
 def slug(name: str) -> str:
-    text = re.sub(r"[^\w\s-]", "", name.lower()).strip()
-    return re.sub(r"[\s_-]+", "-", text).strip("-")[:40]
+    """The id part of a name: plain ASCII, so it fits in a URL and a folder name anywhere.
+
+    Accents are dropped (año -> ano); a name in another script (ಮಾನವ ಸಂಪನ್ಮೂಲ)
+    has no letters left and gives "", so the id is then "workspace-<random>".
+    The name people see keeps every letter.
+    """
+    text = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode().lower()
+    text = re.sub(r"[^a-z0-9\s_-]", "", text).strip()
+    return re.sub(r"[\s_-]+", "-", text).strip("-")[:40].strip("-")
 
 
 def keywords(question: str) -> list[str]:
@@ -314,11 +322,15 @@ class Workspaces:
         workspace_id = f"{slug(name) or 'workspace'}-{secrets.token_hex(3)}"
         folder = self.root / workspace_id
         folder.mkdir()
-        (folder / "workspace.json").write_text(json.dumps({
-            "id": workspace_id, "name": name[:80], "instructions": instructions.strip(),
-            "created": time.strftime("%Y-%m-%d"), "embed_model": "",
-        }, indent=2), encoding="utf-8")
-        return self.get(workspace_id)
+        try:
+            (folder / "workspace.json").write_text(json.dumps({
+                "id": workspace_id, "name": name[:80], "instructions": instructions.strip(),
+                "created": time.strftime("%Y-%m-%d"), "embed_model": "",
+            }, indent=2), encoding="utf-8")
+            return self.get(workspace_id)
+        except Exception:
+            shutil.rmtree(folder, ignore_errors=True)  # no half-made workspace left behind, unseen
+            raise
 
     def delete(self, workspace_id: str) -> None:
         workspace = self.get(workspace_id)

@@ -1,9 +1,10 @@
 """Which SQL the model may run: one statement that only reads.
 
-This is the first of three locks. The others are on the connection itself:
-SQLite is opened read-only, and PostgreSQL and MySQL run every query in a
-read-only transaction (see `connectors.py`). A database user that can only
-read is the fourth, and the one to rely on: set it up on the server.
+This is the first of four locks. The others are on the connection itself
+(see `connectors.py`): every driver is made to run exactly one statement per
+call, SQLite is opened read-only, and PostgreSQL and MySQL run every query in
+a read-only transaction. A database user that can only read is the last, and
+the one to rely on: set it up on the server.
 
 AnythingLLM only asks its model, in the tool's description, to send SELECTs.
 Here the request is refused before it reaches the database.
@@ -38,32 +39,38 @@ _FORBIDDEN = {
     "pg_advisory_lock", "pg_advisory_xact_lock", "query_to_xml", "query_to_xml_and_xmlschema",
 }
 
-# Strings, quoted names and comments, removed before the words are checked.
-_LITERALS = re.compile(
-    r"""
-      '(?:[^'\\]|\\.|'')*'          # 'string', with '' or \' inside
-    | "(?:[^"]|"")*"                # "quoted name"
-    | `(?:[^`]|``)*`                # `quoted name` (MySQL)
-    | \$(\w*)\$.*?\$\1\$            # $$dollar string$$ (PostgreSQL)
-    | --[^\n]*                      # -- comment
-    | \#[^\n]*                      # # comment (MySQL)
-    | /\*.*?\*/                     # /* comment */
-    """,
-    re.VERBOSE | re.DOTALL,
-)
+# Strings and quoted names, removed before the words are checked. They are read
+# the way each database reads them: a backslash escapes a quote in MySQL only,
+# and $$dollar strings$$ exist in PostgreSQL only. Reading them any other way
+# would let a database see a second statement where this check sees a string.
+_PLAIN_STRING = r"'(?:[^']|'')*'"
+_MYSQL_STRING = r"'(?:[^'\\]|\\.|'')*'|\"(?:[^\"\\]|\\.|\"\")*\""
+_NAME = r'"(?:[^"]|"")*"'
+_LITERALS = {
+    "mysql": re.compile("|".join([_MYSQL_STRING, r"`(?:[^`]|``)*`"]), re.DOTALL),
+    "postgresql": re.compile("|".join([_PLAIN_STRING, _NAME, r"\$(\w*)\$.*?\$\1\$"]), re.DOTALL),
+    "sqlite": re.compile("|".join([_PLAIN_STRING, _NAME, r"`(?:[^`]|``)*`", r"\[[^\]]*\]"]), re.DOTALL),
+}
 _WORD = re.compile(r"[A-Za-z_][A-Za-z0-9_$]*")
 
 
-def check(sql: str) -> str:
-    """Returns the statement without a trailing semicolon, or raises UnsafeQuery."""
+def check(sql: str, engine: str = "postgresql") -> str:
+    """Returns the statement without a trailing semicolon, or raises UnsafeQuery.
+
+    `engine` is "sqlite", "postgresql" or "mysql": the strings are read as that
+    database reads them. Comments are refused rather than read: each database
+    has its own idea of where one ends (`#` is a comment in MySQL but XOR in
+    PostgreSQL; `--1` is a comment here but "minus minus one" in MySQL), and
+    a query does not need them.
+    """
     text = (sql or "").strip()
     if not text:
         raise UnsafeQuery("The query is empty.")
-    if "/*!" in text:
-        raise UnsafeQuery("MySQL's /*! ... */ comments run as code and are not allowed.")
-    bare = _LITERALS.sub(" ", text)
-    if "'" in bare or '"' in bare or "`" in bare or "/*" in bare:
-        raise UnsafeQuery("The query has a string, name or comment that is not closed.")
+    bare = _LITERALS.get(engine, _LITERALS["postgresql"]).sub(" ", text)
+    if "'" in bare or '"' in bare or "`" in bare:
+        raise UnsafeQuery("The query has a string or a quoted name that is not closed.")
+    if "--" in bare or "/*" in bare or "*/" in bare or (engine == "mysql" and "#" in bare):
+        raise UnsafeQuery("Remove the comments from the query and send it again.")
 
     body = bare.strip().rstrip(";").strip()
     if ";" in body:
