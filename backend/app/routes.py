@@ -13,11 +13,13 @@ from ollama_pipeline import (
     chat_stream,
     extract_text,
     picker_models,
+    select_local_model,
     select_model,
     select_tool_model,
     todays_theme,
 )
 from sql_connector import SqlTools
+from workspace_engine import WorkspaceError
 
 from .schemas import ChatRequest
 
@@ -75,15 +77,23 @@ async def chat(
     registry: Registry = Depends(get_registry),
     auto: Router = Depends(get_router),
 ):
-    """Streams the reply as newline-delimited JSON events: route, notice, thinking, delta,
-    tool_call, tool_result, done, error.
+    """Streams the reply as newline-delimited JSON events: route, sources, notice, thinking,
+    delta, tool_call, tool_result, done, error.
 
-    With `database` set the reply comes from a local model that queries that
-    saved connection with the SQL connector's tools; Auto's routing is skipped.
+    With `workspace` set the reply is based on the passages of that workspace's
+    documents that match the question (a `sources` event lists them). With
+    `database` set a local model queries that saved connection with the SQL
+    connector's tools. Either one keeps the reply on a local model.
     """
     messages = [m.model_dump() for m in body.messages]
-    tools = None
+    tools, sources, context = None, None, []
     try:
+        if body.workspace:
+            try:
+                passages, sources = await request.app.state.workspaces.context(body.workspace, messages)
+            except WorkspaceError as exc:
+                raise HTTPException(404, str(exc)) from exc
+            context.append(passages)
         if body.database:
             connection = request.app.state.sql_store.get(body.database)
             if connection is None:
@@ -92,19 +102,28 @@ async def chat(
             tools = SqlTools([connection], max_rows=sql.max_rows, timeout=sql.timeout)
             entry, route = await select_tool_model(registry, body.model, sql.model)
             fallbacks = []
-            system = "\n\n".join(part for part in (entry.system, tools.system_prompt()) if part)
-            messages = [{"role": "system", "content": system}, *messages]
+            context.append(tools.system_prompt())
+        elif body.workspace:
+            entry, route = await select_local_model(registry, auto, body.model, messages)
+            fallbacks = []
         else:
             entry, route, fallbacks = await select_model(registry, auto, body.model, messages)
     except ModelNotFound as exc:
         raise HTTPException(404, str(exc)) from exc
     except OllamaUnavailable as exc:
         raise HTTPException(503, str(exc)) from exc
+    except PipelineError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    if context:
+        system = "\n\n".join(part for part in (entry.system, *context) if part)
+        messages = [{"role": "system", "content": system}, *messages]
 
     async def events() -> AsyncIterator[str]:
         try:
             if route:
                 yield json.dumps(route) + "\n"
+            if sources:
+                yield json.dumps(sources) + "\n"
             stream = chat_stream(
                 registry, entry, messages, body.options, fallbacks,
                 tools=tools.definitions if tools else None,

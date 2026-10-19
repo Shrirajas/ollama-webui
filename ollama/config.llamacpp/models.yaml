@@ -17,6 +17,11 @@
 #   --mmproj     needed for Gemma to read screenshots and scanned invoices
 #   --alias      optional: a server with one model answers to any name here
 #
+# For searching workspace documents by meaning, a third, small server:
+#   llama-server -m nomic-embed-text-v1.5.Q8_0.gguf --embedding \
+#       -c 8192 -b 2048 -ub 2048 --port 8082
+# Without it, workspaces still work: passages are found by keywords.
+#
 # To use this file:  cp -r ollama/config.llamacpp ollama/config.local
 # (or set OLLAMA_PIPELINE_CONFIG=/path/to/ollama/config.llamacpp), restart, and
 # check:  cd backend && python -m ollama_pipeline
@@ -31,6 +36,7 @@
 hosts:
   gemma: {url: http://127.0.0.1:8080, kind: llamacpp}
   llama: {url: http://127.0.0.1:8081, kind: llamacpp}
+  embed: {url: http://127.0.0.1:8082, kind: llamacpp}   # embeddings for workspaces (optional)
 
 default_host: gemma
 
@@ -87,6 +93,17 @@ sql:
   max_rows: 200
   timeout: 30
   max_rounds: 8
+
+# Workspaces: documents a team adds once, searched for every question.
+workspaces:
+  embed_host: embed
+  embed_model: nomic-embed-text   # any name: the server serves one model
+  query_prefix: "search_query: "
+  document_prefix: "search_document: "
+  chunk_chars: 1200
+  overlap_chars: 200
+  top_k: 6
+  max_upload_mb: 50
 
 default_model: llama
 

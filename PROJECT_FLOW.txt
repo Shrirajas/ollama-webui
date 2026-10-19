@@ -11,6 +11,7 @@ FOLDERS (each has one job; calls only go frontend -> backend -> documents -> oll
               invoices.html - its Invoices tab: invoices into a sheet.
               word.html - its Word document tab: sources into a designed document.
               databases.html - saved database connections (the SQL connector).
+              workspaces.html - workspaces and their documents (document search).
               Talks to the backend only through /api/* over HTTP.
   backend/    FastAPI app (Python). Receives HTTP requests, calls the
               ollama_pipeline package, and serves frontend/ at "/".
@@ -55,6 +56,14 @@ FOLDERS (each has one job; calls only go frontend -> backend -> documents -> oll
                 sql_connector/tools.py       the four tools the model calls
               Its HTTP side is backend/app/sql/ (/api/sql/connections ...); the chat
               side is /api/chat with `database` set.
+  workspaces/ Workspaces (package workspace_engine): documents split into
+              passages, indexed on this machine, searched for every question.
+                workspace_engine/chunking.py  text -> overlapping passages
+                workspace_engine/index.py     one SQLite file per workspace: FTS5 + vectors
+                workspace_engine/service.py   adding, embedding, searching, the chat's context
+                workspace_engine/prompts.py   what the model is told
+              Its HTTP side is backend/app/workspaces/ (/api/workspaces ...); the chat
+              side is /api/chat with `workspace` set.
   run.sh      starts the backend on http://127.0.0.1:8000
   run.ps1     the same for Windows PowerShell
 
@@ -187,6 +196,11 @@ SQL CONNECTOR (a database picked in the chat's model menu)
   tools list_databases, list_tables, get_table_schema, query -> each call it makes
   is run by sql_connector (tool_call / tool_result events) and the result goes
   back to it, until it answers in text (at most sql.max_rounds calls).
+
+WORKSPACES (a workspace picked in the chat's left panel)
+  POST /api/chat {model, messages, workspace} -> the last question is searched in
+  the workspace (words + meaning) -> the best passages go into the system message,
+  numbered -> a local model answers citing [n] -> a `sources` event lists them.
 
 LLAMA.CPP (instead of Ollama)
   A host in models.yaml written {url: ..., kind: llamacpp} is a llama-server.

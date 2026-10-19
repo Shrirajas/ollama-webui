@@ -147,6 +147,25 @@ async def select_tool_model(
     return chosen, event
 
 
+async def select_local_model(
+    registry: Registry, router: Router, model_id: str | None, messages: list[dict[str, Any]]
+) -> tuple[ModelEntry, dict[str, Any] | None]:
+    """`select_model`, but never a cloud model: for replies whose context must stay on this machine."""
+    entry, route, fallbacks = await select_model(registry, router, model_id, messages)
+    if entry.provider != OPENCODE:
+        return entry, route
+    if model_id not in (AUTO_ID, None):
+        raise PipelineError(f"{entry.label} runs in the cloud, and workspace documents stay on this machine. Pick a local model or Auto.")
+    local = next((e for e in fallbacks if e.provider != OPENCODE), None)
+    if local is None:
+        heavy = router.config.route(router.config.heavy_route)
+        local = await registry.resolve(heavy.model if heavy else None)
+    return local, {
+        "type": "route", "model": local.id, "label": local.label, "route": None, "source": "fallback",
+        "confidence": None, "note": "Workspace documents stay on this machine, so a local model answers.",
+    }
+
+
 def _context_notice(entry: ModelEntry, payload: list[dict[str, Any]], options: dict[str, Any]) -> str | None:
     limit = options.get("num_ctx")
     if not limit:

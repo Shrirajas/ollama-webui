@@ -251,6 +251,15 @@ class LlamaCppClient:
             except ValueError:
                 return None
 
+    async def embed(self, model: str, texts: list[str]) -> list[list[float]]:
+        """One vector per text. Needs a llama-server started with `--embedding` and an embedding model."""
+        data = await self._request("POST", "/v1/embeddings", json={"model": model, "input": texts}, timeout=JSON_TIMEOUT)
+        items = sorted(data.get("data") or [], key=lambda item: item.get("index", 0))
+        vectors = [item.get("embedding") or [] for item in items]
+        if len(vectors) != len(texts):
+            raise OllamaError(f"llama-server returned {len(vectors)} vectors for {len(texts)} texts. Was it started with --embedding?")
+        return vectors
+
     async def aclose(self) -> None:
         await self._http.aclose()
 

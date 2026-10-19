@@ -154,6 +154,13 @@ a.btn[aria-disabled="true"]{opacity:.45;pointer-events:none}
   .file{flex-wrap:wrap} .file .what{max-width:100%;text-align:left}
 }
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+/* Five links do not fit beside the logo on a phone: they scroll sideways inside the bar instead. */
+.nav{gap:12px}
+.links{min-width:0;overflow-x:auto;scrollbar-width:none}
+.links::-webkit-scrollbar{display:none}
+.links a{flex:none}
+@media (max-width:620px){.links a{padding:7px 9px;font-size:13.5px}}
+a.mini{display:inline-flex;align-items:center}
 </style>
 </head>
 <body>
@@ -169,6 +176,7 @@ a.btn[aria-disabled="true"]{opacity:.45;pointer-events:none}
     </a>
     <nav class="links" aria-label="Primary">
       <a href="index.html">Chat</a>
+      <a href="workspaces.html">Workspaces</a>
       <a href="documents.html" aria-current="page">Documents</a>
       <a href="databases.html">Databases</a>
     </nav>

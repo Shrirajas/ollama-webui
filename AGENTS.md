@@ -11,9 +11,9 @@ back. With "Auto", a router sends each message to a light model, a reasoning
 model or a vision model on this machine, or, for questions about software, to
 OpenCode's free cloud models.
 
-## Running the `tools` branch on the server (llama.cpp, SQL connector)
+## Running the `tools` branch on the server (llama.cpp, SQL connector, workspaces)
 
-This branch adds two things, and a round of UI fixes:
+This branch adds three things (Workspaces has its own section below), and a round of UI fixes:
 
 - **llama.cpp instead of Ollama.** The server runs llama.cpp's `llama-server`
   with Gemma 4 12B and Llama 3.1 8B, not Ollama. A host in `models.yaml`
@@ -33,8 +33,8 @@ This branch adds two things, and a round of UI fixes:
 Steps on the server:
 
 1. **Get the branch.** `git fetch && git checkout tools`
-2. **Install the new packages** (`psycopg[binary]`, `pymysql`, the project's
-   own `sql/`): `pip install -r requirements.txt`, or
+2. **Install the new packages** (`psycopg[binary]`, `pymysql`, `numpy`, the
+   project's own `sql/` and `workspaces/`): `pip install -r requirements.txt`, or
    `cd backend && uv sync --extra router --inexact`. SQLite needs nothing.
 3. **Start both llama-servers with `--jinja`** (tool calls need it), Gemma
    with `--mmproj` (pictures). The commands are at the top of
@@ -84,6 +84,66 @@ Not done, check these on the server:
 - llama-server answers one request at a time unless started with `-np 2`
   or more; Auto's router and a reply then wait for each other.
 - `num_ctx` cannot change llama-server's context; its `-c` does.
+
+### Workspaces (document search with sources, RAG)
+
+Modelled on AnythingLLM's workspaces. A team puts its documents (PDF, Word,
+Excel, CSV, text; many at once) in a workspace on the **Workspaces** page
+(`frontend/workspaces.html`). In the chat, the **Workspaces** panel on the
+left picks one; every answer is then based on the passages of its documents
+that match the question, and a "Sources" list under the answer shows each
+passage (document, page) with its text.
+
+How it works (`workspaces/workspace_engine/`, package `workspace_engine`):
+
+1. The backend reads the file (`backend/app/workspaces/routes.py`): a PDF page
+   by page, so a passage can name its page; Word, Excel, CSV and text through
+   the Word tab's `read_source`. Up to 5 million characters per file.
+2. `chunking.py` splits it into passages of about `chunk_chars` (1200) that
+   overlap by `overlap_chars` (200) and end at a paragraph or sentence.
+3. `service.py` gets a vector for each passage from the embedding model
+   (`workspaces.embed_model`), and `index.py` stores passages, vectors and a
+   full-text index in `backend/data/workspaces/<id>/index.db` (SQLite FTS5).
+4. For a question, `index.py` ranks passages by words (BM25) and by meaning
+   (vectors), combines the two (reciprocal rank fusion) and the top `top_k`
+   (6) go into the system message with numbers; `prompts.py` tells the model
+   to cite them as [1], [2] and to say when the documents do not cover it.
+   A short follow-up ("and for flights?") is searched together with the
+   question before it.
+
+Rules to keep:
+- **Local models only.** A workspace chat never goes to OpenCode: Auto picks
+  a local model (`select_local_model`); picking a cloud model is refused.
+- **It works without an embedding model.** Without one (not set, not running,
+  or failing) passages are found by words only, and the page says so. Passages
+  indexed that way get vectors later with **Re-index**. Vectors from another
+  embedding model are not mixed with new ones: the workspace asks to be
+  re-indexed.
+- **The same file twice is skipped; a changed file with the same name
+  replaces the old one.**
+- To change what the model is told, edit `workspace_engine/prompts.py` only.
+
+Embedding model: `workspaces.embed_model` in `models.yaml`. With llama.cpp, a
+third llama-server started with `--embedding` (the command is at the top of
+`ollama/config.llamacpp/models.yaml`, port 8082). With Ollama,
+`ollama pull nomic-embed-text`. `query_prefix` / `document_prefix` are what
+nomic-embed-text expects; empty them for other models.
+
+Checks without a model: `cd backend && python -m workspace_engine`.
+
+Not done, check these on the server:
+- **No real embedding model has been used**, only a stand-in. Run
+  nomic-embed-text v1.5 on llama-server with `-b 2048 -ub 2048` (a passage
+  longer than the batch fails) and check that "Search by meaning" shows on
+  the Workspaces page.
+- **No real chat model has answered from passages.** Check that Llama 3.1 8B
+  and Gemma 4 12B cite [n] and say so when the documents do not cover a
+  question. The top 6 passages are always sent, even weak ones; if answers
+  drift, lower `top_k`.
+- Speed of adding a large PDF (hundreds of pages) with a real embedding model.
+- Scanned PDFs have no text and are refused, as in the chat.
+- There are no logins yet: anyone who can open the app can see and delete
+  every workspace.
 
 UI fixes in this branch: the chat composer's text, chips and model name no
 longer shrink below a readable size on laptop screens (floors, positions
@@ -865,6 +925,9 @@ backend/app/sql/                 its HTTP routes (/api/sql/connections)
 frontend/databases.html          its page
 ollama/ollama_pipeline/llamacpp.py   llama-server client (hosts with kind: llamacpp)
 ollama/config.llamacpp/          models.yaml for llama-server: Gemma 4 12B + Llama 3.1 8B
+workspaces/workspace_engine/     workspaces: passages, index (SQLite FTS5 + vectors), search, prompts
+backend/app/workspaces/          its HTTP routes (/api/workspaces)
+frontend/workspaces.html         its page; the chat's left panel picks a workspace
 backend/app/documents/           its HTTP routes and storage
 frontend/documents.html          its page
 frontend/invoices.html           the Invoices tab

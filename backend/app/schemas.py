@@ -21,3 +21,4 @@ class ChatRequest(BaseModel):
     messages: list[ChatMessage] = Field(min_length=1)
     options: dict[str, Any] | None = Field(default=None, description="Ollama options, e.g. temperature")
     database: str | None = Field(default=None, description="Id of a saved database connection: the model answers from it with tools")
+    workspace: str | None = Field(default=None, description="Id of a workspace: the reply is based on the passages of its documents that match")

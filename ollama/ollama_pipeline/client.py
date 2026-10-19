@@ -107,5 +107,13 @@ class OllamaClient:
             except ValueError:
                 return None
 
+    async def embed(self, model: str, texts: list[str]) -> list[list[float]]:
+        """One vector per text, from an embedding model (e.g. `ollama pull nomic-embed-text`)."""
+        data = await self._request("POST", "/api/embed", json={"model": model, "input": texts}, timeout=JSON_TIMEOUT)
+        vectors = data.get("embeddings") or []
+        if len(vectors) != len(texts):
+            raise OllamaError(f"{model} returned {len(vectors)} vectors for {len(texts)} texts. Is it an embedding model?")
+        return vectors
+
     async def aclose(self) -> None:
         await self._http.aclose()

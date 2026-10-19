@@ -75,6 +75,20 @@ class SqlConfig:
 
 
 @dataclass(frozen=True)
+class WorkspacesConfig:
+    """Settings of workspaces: documents a team adds once, searched for every question."""
+
+    embed_host: str = ""  # host (under `hosts:`) that serves the embedding model; empty = default_host
+    embed_model: str = ""  # embedding model on that host; empty = keyword search only
+    query_prefix: str = ""  # put before a question when it is embedded (nomic-embed-text wants "search_query: ")
+    document_prefix: str = ""  # put before a passage when it is embedded ("search_document: ")
+    chunk_chars: int = 1200  # length of one passage
+    overlap_chars: int = 200  # how much a passage repeats of the one before, so nothing falls between two
+    top_k: int = 6  # passages given to the model with each question
+    max_upload_mb: int = 50  # largest file that can be added
+
+
+@dataclass(frozen=True)
 class Route:
     name: str
     models: tuple[str, ...]  # ids of entries under `models:`; the first one that can answer is used
@@ -123,6 +137,7 @@ class PipelineConfig:
     documents: DocumentsConfig = field(default_factory=DocumentsConfig)
     invoices: InvoicesConfig = field(default_factory=InvoicesConfig)
     sql: SqlConfig = field(default_factory=SqlConfig)
+    workspaces: WorkspacesConfig = field(default_factory=WorkspacesConfig)
     # What runs on each host: "ollama", or "llamacpp" for a llama.cpp llama-server.
     host_kinds: dict[str, str] = field(default_factory=dict)
 
@@ -255,6 +270,23 @@ def _sql(raw: dict[str, Any], models: dict[str, ModelAlias]) -> SqlConfig:
     )
 
 
+def _workspaces(raw: dict[str, Any], hosts: dict[str, str], default_host: str) -> WorkspacesConfig:
+    host = raw.get("embed_host") or default_host
+    if host not in hosts:
+        raise ValueError(f"models.yaml: workspaces.embed_host '{host}' is not one of hosts:")
+    chunk = min(4000, max(300, int(raw.get("chunk_chars", 1200))))
+    return WorkspacesConfig(
+        embed_host=host,
+        embed_model=str(raw.get("embed_model") or ""),
+        query_prefix=str(raw.get("query_prefix") or ""),
+        document_prefix=str(raw.get("document_prefix") or ""),
+        chunk_chars=chunk,
+        overlap_chars=min(chunk // 2, max(0, int(raw.get("overlap_chars", 200)))),
+        top_k=min(20, max(1, int(raw.get("top_k", 6)))),
+        max_upload_mb=min(500, max(1, int(raw.get("max_upload_mb", 50)))),
+    )
+
+
 def load_config(directory: Path | None = None) -> PipelineConfig:
     directory = directory or config_dir()
     log.info("Config: %s", directory)
@@ -317,4 +349,5 @@ def load_config(directory: Path | None = None) -> PipelineConfig:
         invoices=_invoices(raw.get("invoices") or {}, {m.id: m for m in models}),
         sql=_sql(raw.get("sql") or {}, {m.id: m for m in models}),
         host_kinds=kinds,
+        workspaces=_workspaces(raw.get("workspaces") or {}, hosts, default_host),
     )

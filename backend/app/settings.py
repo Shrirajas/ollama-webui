@@ -19,6 +19,7 @@ class Settings:
     frontend_dir: Path
     documents_dir: Path
     sql_dir: Path
+    workspaces_dir: Path
 
 
 settings = Settings(
@@ -29,4 +30,5 @@ settings = Settings(
     frontend_dir=Path(os.environ.get("FRONTEND_DIR") or BACKEND_DIR.parent / "frontend"),
     documents_dir=Path(os.environ.get("DOCUMENTS_DIR") or BACKEND_DIR / "data" / "documents"),
     sql_dir=Path(os.environ.get("SQL_DIR") or BACKEND_DIR / "data" / "sql"),
+    workspaces_dir=Path(os.environ.get("WORKSPACES_DIR") or BACKEND_DIR / "data" / "workspaces"),
 )

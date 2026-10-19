@@ -345,6 +345,67 @@ button{cursor:pointer}
 .logos text{font-family:var(--font-display);font-weight:700;font-size:23px}
 
 /* ═════════ TABLET: fluid desktop, one-row toolbar ═════════ */
+/* ───────── Workspaces panel (left) ───────── */
+.spaces{
+  position:fixed;z-index:40;left:max(14px,env(safe-area-inset-left));top:max(88px,calc(96*var(--u)));bottom:20px;width:252px;
+  display:flex;flex-direction:column;gap:8px;padding:12px;border-radius:18px;
+  background:rgba(22,22,25,.94);-webkit-backdrop-filter:blur(22px);backdrop-filter:blur(22px);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.08),0 18px 50px rgba(0,0,0,.45);
+  color:#ECECEF;font-size:13.5px;line-height:1.4;
+  transform:translateX(calc(-100% - 40px));visibility:hidden;transition:transform .24s cubic-bezier(.4,0,.2,1),visibility 0s .24s;
+}
+.spaces-open .spaces{transform:none;visibility:visible;transition:transform .24s cubic-bezier(.4,0,.2,1)}
+.spaces-head{display:flex;align-items:center;gap:8px;padding:2px 2px 0 6px}
+.spaces-head b{flex:1;font-size:14.5px;font-weight:600}
+.spaces-close{width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;color:#98999C}
+.spaces-close svg{width:12px;height:12px}
+.spaces-close:hover{background:rgba(255,255,255,.08);color:#fff}
+.spaces-note{padding:0 6px;font-size:12.5px;color:#8B8C8E}
+.spaces-list{flex:1 1 auto;min-height:0;overflow-y:auto;scrollbar-width:thin;display:flex;flex-direction:column;gap:2px;margin:0 -4px;padding:0 4px}
+.space{width:100%;display:flex;align-items:center;gap:10px;text-align:left;padding:9px 10px;border-radius:11px}
+.space:hover,.space:focus-visible{background:rgba(255,255,255,.07);outline:none}
+.space[aria-selected="true"]{background:rgba(244,157,112,.15)}
+.space .s-text{flex:1;min-width:0}
+.space .s-name{display:block;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.space .s-sub{display:block;font-size:12px;color:#8B8C8E}
+.space .s-tick{flex:none;width:10px;height:5px;margin-bottom:3px}
+.space[aria-selected="true"] .s-tick{border:solid #F49D70;border-width:0 0 2px 2px;transform:rotate(-45deg)}
+.spaces-empty{padding:8px 10px;font-size:12.5px;color:#8B8C8E}
+.spaces-new{display:flex;gap:6px}
+.spaces-new input{flex:1;min-width:0;height:36px;padding:0 11px;border-radius:10px;background:rgba(0,0,0,.3);box-shadow:inset 0 0 0 1px rgba(255,255,255,.09);color:#ECECEF;font-size:13.5px;outline:none}
+.spaces-new input:focus{box-shadow:inset 0 0 0 1px rgba(244,157,112,.7)}
+.spaces-new input::placeholder{color:#77787B}
+.spaces-new button{flex:none;width:36px;height:36px;border-radius:10px;font-size:18px;line-height:1;color:#1d1d20;background:#F49D70}
+.spaces-manage{display:block;padding:8px 6px 2px;font-size:13px;color:#F49D70}
+.spaces-manage:hover{text-decoration:underline}
+.spaces-toggle{
+  position:fixed;z-index:39;left:max(14px,env(safe-area-inset-left));top:max(88px,calc(96*var(--u)));
+  height:38px;max-width:220px;padding:0 13px 0 11px;border-radius:12px;display:inline-flex;align-items:center;gap:8px;
+  background:rgba(32,32,35,.9);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);
+  box-shadow:inset 0 0 0 1px rgba(214,228,255,.14);color:#D5D5D8;font-size:13.5px;font-weight:500;
+}
+.spaces-toggle span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.spaces-toggle.on{color:#FBBC94;box-shadow:inset 0 0 0 1px rgba(244,157,112,.45)}
+.spaces-toggle svg{width:17px;height:17px;flex:none}
+.spaces-toggle:hover{color:#fff}
+.spaces-open .spaces-toggle{visibility:hidden}
+@media (max-width:599px){
+  .spaces,.spaces-toggle{top:calc(env(safe-area-inset-top) + 70px)}
+  .spaces{width:min(300px,calc(100vw - 28px))}
+  .spaces-toggle{height:34px;padding:0 9px}
+  .spaces-toggle span{display:none}
+}
+
+/* Sources under an answer from a workspace. */
+.sources{margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.07);font-size:var(--ui-sm);color:#98999C}
+.sources-head{margin-bottom:4px}
+.sources summary{cursor:pointer;list-style:none;padding:3px 0;color:#C9C9CC}
+.sources summary::-webkit-details-marker{display:none}
+.sources summary b{color:#F49D70;font-weight:500;margin-right:4px}
+.sources summary span{color:#8B8C8E}
+.sources .src-text{margin:4px 0 8px;padding:2px 0 2px 10px;border-left:2px solid rgba(255,255,255,.10);white-space:pre-wrap;line-height:1.5;max-height:12em;overflow-y:auto}
+.pill.ws{background:rgba(156,134,206,.18);color:#CDBFF0}
+
 /* Readability floors. The design scales with the window (--u), which on a laptop screen made the
    composer's text 8-10px. Positions stay as designed; text, chips and their padding get a minimum. */
 .ph{font-size:max(13px,calc(var(--ph-fs)*var(--u)))}
@@ -460,7 +521,7 @@ button{cursor:pointer}
   .anim .links a:nth-child(2){animation-delay:.21s}
   .anim .links a:nth-child(3){animation-delay:.26s}
   .anim .links a:nth-child(4){animation-delay:.31s}
-  .anim .links a:nth-child(4){animation-delay:.31s}
+  .anim .links a:nth-child(5){animation-delay:.36s}
   .anim .nav>.cta{animation:e-settle-down .55s var(--e-soft) .34s both}
   .anim .h1{animation:e-focus 1s var(--e-primary) .30s both;will-change:transform,opacity}
   .anim .card{animation:e-panel .90s var(--e-primary) .62s both;will-change:transform,opacity}
@@ -485,6 +546,27 @@ button{cursor:pointer}
   <video class="stage-video" autoplay muted loop playsinline preload="auto"
     src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260826_124724_bc041163-d651-425f-aea3-2acc1efc2c96.mp4"></video>
 
+  <!-- Workspaces: a team's documents, picked here so every answer is based on them. -->
+  <button type="button" class="spaces-toggle" id="spaces-toggle" aria-controls="spaces" aria-expanded="false">
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5.5A1.5 1.5 0 0 1 4.5 4h3.2l1.6 1.8h6.2A1.5 1.5 0 0 1 17 7.3v7.2a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 14.5Z"/></svg>
+    <span id="spaces-toggle-label">Workspaces</span>
+  </button>
+  <aside class="spaces" id="spaces" aria-label="Workspaces">
+    <div class="spaces-head">
+      <b>Workspaces</b>
+      <button type="button" class="spaces-close" id="spaces-close" aria-label="Hide workspaces">
+        <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M8 1.5 3.5 6 8 10.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+    <p class="spaces-note">Pick one and every answer is based on its documents, with sources.</p>
+    <div class="spaces-list" id="spaces-list" role="listbox" aria-label="Workspace"></div>
+    <form class="spaces-new" id="spaces-new" onsubmit="return false">
+      <input id="spaces-new-name" placeholder="New workspace" aria-label="New workspace name" maxlength="80">
+      <button type="submit" aria-label="Add workspace">+</button>
+    </form>
+    <a class="spaces-manage" id="spaces-manage" href="workspaces.html">Add documents and manage →</a>
+  </aside>
+
   <div class="frame">
     <input type="checkbox" id="menu" hidden>
 
@@ -501,6 +583,7 @@ button{cursor:pointer}
         <a href="#">Features</a>
         <a href="#">Examples</a>
         <a href="documents.html">Docs</a>
+        <a href="workspaces.html">Workspaces</a>
         <a href="databases.html">Databases</a>
       </nav>
       <a class="cta" href="#" data-start><span>Get Started</span></a>
@@ -515,6 +598,7 @@ button{cursor:pointer}
           <a href="#">Features</a>
           <a href="#">Examples</a>
           <a href="documents.html">Docs</a>
+          <a href="workspaces.html">Workspaces</a>
           <a href="databases.html">Databases</a>
           <a class="cta" href="#" data-start><span>Get Started</span></a>
         </div>
@@ -602,6 +686,8 @@ button{cursor:pointer}
   const API = (window.FASTSHOT_API || '').replace(/\/$/, '');
   const MODEL_KEY = 'fastshot.model';
   const DB_KEY = 'fastshot.database';
+  const WS_KEY = 'fastshot.workspace'; /* shared with workspaces.html */
+  const PANEL_KEY = 'fastshot.workspaces-panel';
   const MAX_DOC_BYTES = 20 * 1024 * 1024;
   const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
@@ -614,6 +700,7 @@ button{cursor:pointer}
   const state = {
     models: [], model: null, offline: false, messages: [], attachments: [], busy: false, abort: null,
     databases: [], database: null, /* a saved connection the model answers from (databases.html) */
+    workspaces: [], workspace: null, /* a workspace whose documents every answer is based on (workspaces.html) */
   };
 
   const keep = (key) => ({
@@ -622,7 +709,10 @@ button{cursor:pointer}
   });
   const store = keep(MODEL_KEY);
   const dbStore = keep(DB_KEY);
+  const wsStore = keep(WS_KEY);
+  const panelStore = keep(PANEL_KEY);
   state.database = dbStore.get();
+  state.workspace = wsStore.get();
   const node = (tag, cls, text) => {
     const n = document.createElement(tag);
     if (cls) n.className = cls;
@@ -751,9 +841,98 @@ button{cursor:pointer}
     el.figma.hidden = true;
   });
 
+  /* ── Workspaces panel ── */
+  const currentWorkspace = () => state.workspaces.find((w) => w.id === state.workspace) || null;
+  const plural = (n, one, many) => n + ' ' + (n === 1 ? one : many);
+  async function loadWorkspaces() {
+    try {
+      const res = await fetch(API + '/api/workspaces');
+      if (!res.ok) throw new Error(String(res.status));
+      state.workspaces = (await res.json()).workspaces;
+      if (state.workspace && !currentWorkspace()) setWorkspace(null);
+    } catch {
+      state.workspaces = [];
+    }
+    renderSpaces();
+    renderAttachments();
+  }
+  function setWorkspace(id) {
+    state.workspace = id;
+    wsStore.set(id);
+    renderSpaces();
+    renderAttachments();
+  }
+  function renderSpaces() {
+    const list = $('spaces-list');
+    list.replaceChildren();
+    const ws = currentWorkspace();
+    $('spaces-toggle-label').textContent = ws ? ws.name : 'Workspaces';
+    $('spaces-toggle').classList.toggle('on', !!ws);
+    $('spaces-manage').href = 'workspaces.html' + (ws ? '#' + encodeURIComponent(ws.id) : '');
+    const items = [null, ...state.workspaces];
+    for (const w of items) {
+      const b = node('button', 'space');
+      b.type = 'button';
+      b.setAttribute('role', 'option');
+      b.setAttribute('aria-selected', String((w ? w.id : null) === state.workspace));
+      const text = node('span', 's-text');
+      text.append(
+        node('span', 's-name', w ? w.name : 'No workspace'),
+        node('span', 's-sub', w ? plural(w.documents, 'document', 'documents') : 'Chat without documents'),
+      );
+      b.append(text, node('span', 's-tick'));
+      b.addEventListener('click', () => {
+        setWorkspace(w ? w.id : null);
+        if (window.innerWidth < 1180) toggleSpaces(false);
+        el.prompt.focus();
+      });
+      list.append(b);
+    }
+    if (!state.workspaces.length) list.append(node('p', 'spaces-empty', 'No workspaces yet. Name one below, then add its documents.'));
+  }
+  function toggleSpaces(open, remember = true) {
+    root.classList.toggle('spaces-open', open);
+    $('spaces-toggle').setAttribute('aria-expanded', String(open));
+    if (remember) panelStore.set(open ? 'open' : 'closed');
+    if (open) loadWorkspaces();
+  }
+  $('spaces-toggle').addEventListener('click', () => toggleSpaces(true));
+  $('spaces-close').addEventListener('click', () => toggleSpaces(false));
+  $('spaces-new').addEventListener('submit', async () => {
+    const input = $('spaces-new-name');
+    const name = input.value.trim();
+    if (!name) { input.focus(); return; }
+    try {
+      const res = await fetch(API + '/api/workspaces', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'Could not make the workspace');
+      input.value = '';
+      wsStore.set(data.id);
+      location.href = 'workspaces.html#' + encodeURIComponent(data.id); /* a new workspace needs its documents first */
+    } catch (err) {
+      flash(err instanceof TypeError ? 'The backend is not reachable' : err.message);
+    }
+  });
+  /* Open by default where there is room beside the chat, unless the reader closed it. */
+  toggleSpaces(panelStore.get() ? panelStore.get() === 'open' : window.innerWidth >= 1280, false);
+  if (!root.classList.contains('spaces-open')) loadWorkspaces();
+
   /* ── Attachments ── */
   function renderAttachments() {
     el.attachments.querySelectorAll('.pill:not(.warn)').forEach((p) => p.remove());
+    const ws = currentWorkspace();
+    if (ws) {
+      const pill = node('span', 'pill ws');
+      pill.title = 'Answers are based on the documents in "' + ws.name + '"';
+      const remove = node('button', '', '×');
+      remove.type = 'button';
+      remove.setAttribute('aria-label', 'Stop using ' + ws.name);
+      remove.addEventListener('click', () => setWorkspace(null));
+      pill.append(node('span', '', 'Workspace: ' + ws.name), remove);
+      el.attachments.append(pill);
+    }
     if (state.database) {
       const pill = node('span', 'pill db');
       pill.title = 'Replies come from the database "' + state.database + '", queried read-only by a local model';
@@ -1064,6 +1243,21 @@ button{cursor:pointer}
       if ((event.preview || []).length < event.rows) wrap.append(node('div', '', 'First ' + event.preview.length + ' of ' + event.rows + ' rows shown.'));
       t.text.append(wrap);
     };
+    /* The passages the answer is based on, under it: [n] document · page, each opening to its text. */
+    const showSources = (event) => {
+      const box = node('div', 'sources');
+      box.append(node('div', 'sources-head', event.items.length
+        ? 'Sources from ' + event.workspace + ' (found by ' + event.mode + ')'
+        : 'No passage in ' + event.workspace + ' matched this question'));
+      for (const item of event.items) {
+        const d = node('details');
+        const s = node('summary');
+        s.append(node('b', '', '[' + item.n + ']'), item.document, item.label ? node('span', '', ' · ' + item.label) : '');
+        d.append(s, node('div', 'src-text', item.text));
+        box.append(d);
+      }
+      out.bubble.append(box);
+    };
     const fail = (text) => {
       out.bubble.classList.add('err');
       out.body.textContent = text;
@@ -1076,7 +1270,10 @@ button{cursor:pointer}
       const res = await fetch(API + '/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: state.model, messages: history, database: state.database || undefined }),
+        body: JSON.stringify({
+          model: state.model, messages: history,
+          database: state.database || undefined, workspace: state.workspace || undefined,
+        }),
         signal: state.abort.signal,
       });
       if (!res.ok) {
@@ -1106,6 +1303,8 @@ button{cursor:pointer}
               + (event.route ? ' to "' + event.route + '"' : '')
               + (event.confidence != null ? ' (confidence ' + event.confidence + ')' : '');
             if (event.note) out.body.before(node('div', 'note', event.note));
+          } else if (event.type === 'sources') {
+            showSources(event);
           } else if (event.type === 'notice') {
             out.body.before(node('div', 'note', event.message));
           } else if (event.type === 'thinking') {

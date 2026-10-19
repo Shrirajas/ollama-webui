@@ -11,6 +11,7 @@ dependencies = [
     "ollama-pipeline",
     "document-engine",
     "sql-connector",
+    "workspace-engine",
 ]
 
 [project.optional-dependencies]
@@ -23,3 +24,4 @@ package = false
 ollama-pipeline = { path = "../ollama", editable = true }
 document-engine = { path = "../documents", editable = true }
 sql-connector = { path = "../sql", editable = true }
+workspace-engine = { path = "../workspaces", editable = true }
