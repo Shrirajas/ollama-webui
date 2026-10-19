@@ -288,7 +288,7 @@ async def chat(
                 async for step in state.chatfiles.read_whole(file, entry, part_tokens, file_share // len(reading)):
                     if step["type"] == "progress":
                         yield json.dumps({"type": "tool_progress", "name": "read_document",
-                                          "message": f"Reading {file.name}: part {step['done']} of {step['total']}"}) + "\n"
+                                          "message": f"Reading {file.name}: {step['done']} of {step['total']} parts read"}) + "\n"
                     else:
                         notes = step
                 yield json.dumps({"type": "tool_result", "name": "read_document", "file": file.name,

@@ -226,17 +226,16 @@ async def chat_stream(
     while True:
         text, calls, last = "", [], {}
         for attempt in range(3):
-            sent = payload
+            sent, note = payload, None
             if budget:
                 fitted = fit(payload, budget.prompt, keep_from=turn)
-                sent = fitted.messages
-                note = fitted.notice(budget)
-                if note and not noticed:
-                    noticed = True
-                    yield {"type": "notice", "message": note}
+                sent, note = fitted.messages, fitted.notice(budget)
             received = False
             try:
                 async for chunk in client.chat_stream(entry.model, sent, merged, tools=offered):
+                    if not received and note and not noticed:  # said once, for the request the server took
+                        noticed = True
+                        yield {"type": "notice", "message": note}
                     received = True
                     message = chunk.get("message") or {}
                     if message.get("thinking"):

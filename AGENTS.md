@@ -115,20 +115,78 @@ Checks without a model: `cd backend && .venv/bin/python -m ollama_pipeline.selfc
 `python -m sql_connector` (spreadsheets), `python -m workspace_engine`
 (chat files: whole, passages, reading in parts, expiry).
 
+**Tested end to end with stand-in llama-servers** (19 October 2026). The
+stand-ins report a 4096-token slot in `/props` and refuse a bigger prompt
+with `exceed_context_size_error`, as llama-server does. All of these passed:
+- **The slot size was read.** `/api/models` showed `context: 4096` for both
+  models.
+- **A 60-page PDF** (about 76,000 tokens) was uploaded through `/api/files`.
+  A question about one fact on page 37 found that passage first, sent a
+  2,151-token request, and the answer quoted it.
+- **"Summarise this document"** read the PDF in 30 parts, with progress
+  events. No part was refused, and the largest request was 3,000 tokens. The
+  answer came from the notes and kept the page-37 fact. Asking again used the
+  cached notes.
+- **A 20,000-row Excel file** (title rows above the header, amounts written
+  as "12,345"). "Show the total amount by region as a chart" made the model
+  call `query` with `SUM ... GROUP BY region`. The totals matched a Python
+  sum of the file exactly, and `create_chart` drew them.
+- **A server that says its slot is 8192 but refuses at 3000.** A chat with
+  24 long earlier messages was refused once (5,715 tokens), shrunk, and
+  answered at 1,757 tokens.
+  - Fixed after that run: the "left out to fit" notice now comes with the
+    request the server accepted, so it gives the real size.
+  - Also fixed: the progress text now reads "Reading X: 3 of 30 parts read"
+    instead of "part 0 of 30".
+
 **Not done, check these on the server:**
-- **No real model has been used for any of this, and it has not been run end
-  to end with a stand-in llama-server.** Only the package self-checks and an
-  import of the app were run.
-- Check, with a real model:
+- **No real model has been used**, only stand-ins. With Gemma 4 12B and
+  Llama 3.1 8B, try:
   - a 100+ page PDF question (passages and Sources);
   - "summarise this PDF" (progress, then an answer from notes);
   - a 50,000-row Excel file ("total sales by region", then a chart).
+  Check that Llama writes SQLite SQL for the sheet's table and column names.
 - Whether llama-server's `/props` reports `n_ctx` per slot as expected with
   and without `--kv-unified`.
 - Reading in parts uses the chat model for every part: a 250-page file is
   about 40 requests. Two run at once per person, so others wait behind them.
-- The browser was not clicked through: the file pills ("84 pages",
-  "3 sheets · 12,345 rows") and the "Reading … part i of n" lookup block.
+- **The browser was not clicked through for this branch.** Check:
+  - the file pills ("60 pages", "1 sheet · 20,000 rows");
+  - the "Reading … parts read" lookup block;
+  - the notice;
+  - the Sources list under a file answer.
+- A file older than `documents.keep_hours` (24 h) is gone. The reply should
+  name it ("attach it again"); this was not tried in a browser.
+- The llama.cpp flags above are not yet in the header of
+  `ollama/config.llamacpp/models.yaml`; copy them there once they are tried
+  on the 4080 Super. Read the real KV size from the `llama_kv_cache` line in
+  the server log.
+- `documents/document_engine/engine/wordedit.py` has two old lint warnings
+  (unused `W_TBL` import, unused `first`); they are not from this branch.
+
+### Next, asked for by the user and not started
+
+1. **Check the document generation.** Go through the documents pages as a
+   person would, using the stand-in or a real model, and fix what is broken.
+   The pages are Create a new document (`word.html`), Fill in a template,
+   Change a document, and Invoices. Those pages still read sources with their
+   own share of `entry.budget` (`word/service.py`, `share()`). They do not
+   yet use chat files, passages or reading in parts, so a very big source is
+   cut there. Consider reusing `ChatFiles.read_whole` for them.
+2. **Presentation generation (PowerPoint).** A new part of the documents
+   section, next to "Create a new document": sources in, slides out
+   (`.pptx`, and PDF through LibreOffice like the Word tab). Suggested shape,
+   following the Word tab's split:
+   - The model writes the deck as Markdown or JSON (title, slides, bullets,
+     notes, a table or chart per slide), never the file.
+   - Code with no model in it builds the `.pptx` with `python-pptx` (MIT; add
+     it to `documents/pyproject.toml`, `uv sync --inexact`, then regenerate
+     `requirements.txt`).
+   - Choices on the page: one colour, a few layouts, a slide count, a company
+     template `.pptx` used as the master.
+   - Charts made from Excel figures with python-pptx's native charts.
+   - Local models only, nothing fetched, the page's choices win, as in the
+     Word tab.
 
 ## Running the `tools` branch on the server (llama.cpp, SQL connector, workspaces)
 
