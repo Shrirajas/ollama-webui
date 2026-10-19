@@ -14,8 +14,10 @@ from ollama_pipeline import (
     extract_text,
     picker_models,
     select_model,
+    select_tool_model,
     todays_theme,
 )
+from sql_connector import SqlTools
 
 from .schemas import ChatRequest
 
@@ -68,12 +70,32 @@ def extract_file(file: UploadFile):
 
 @router.post("/chat")
 async def chat(
-    body: ChatRequest, registry: Registry = Depends(get_registry), auto: Router = Depends(get_router)
+    body: ChatRequest,
+    request: Request,
+    registry: Registry = Depends(get_registry),
+    auto: Router = Depends(get_router),
 ):
-    """Streams the reply as newline-delimited JSON events: route, notice, thinking, delta, done, error."""
+    """Streams the reply as newline-delimited JSON events: route, notice, thinking, delta,
+    tool_call, tool_result, done, error.
+
+    With `database` set the reply comes from a local model that queries that
+    saved connection with the SQL connector's tools; Auto's routing is skipped.
+    """
     messages = [m.model_dump() for m in body.messages]
+    tools = None
     try:
-        entry, route, fallbacks = await select_model(registry, auto, body.model, messages)
+        if body.database:
+            connection = request.app.state.sql_store.get(body.database)
+            if connection is None:
+                raise HTTPException(404, f"There is no saved database connection named '{body.database}'.")
+            sql = registry.config.sql
+            tools = SqlTools([connection], max_rows=sql.max_rows, timeout=sql.timeout)
+            entry, route = await select_tool_model(registry, body.model, sql.model)
+            fallbacks = []
+            system = "\n\n".join(part for part in (entry.system, tools.system_prompt()) if part)
+            messages = [{"role": "system", "content": system}, *messages]
+        else:
+            entry, route, fallbacks = await select_model(registry, auto, body.model, messages)
     except ModelNotFound as exc:
         raise HTTPException(404, str(exc)) from exc
     except OllamaUnavailable as exc:
@@ -83,8 +105,14 @@ async def chat(
         try:
             if route:
                 yield json.dumps(route) + "\n"
-            async for event in chat_stream(registry, entry, messages, body.options, fallbacks):
-                yield json.dumps(event) + "\n"
+            stream = chat_stream(
+                registry, entry, messages, body.options, fallbacks,
+                tools=tools.definitions if tools else None,
+                run_tool=tools.run if tools else None,
+                max_rounds=registry.config.sql.max_rounds,
+            )
+            async for event in stream:
+                yield json.dumps(event, default=str) + "\n"
         except PipelineError as exc:
             yield json.dumps({"type": "error", "message": str(exc)}) + "\n"
 

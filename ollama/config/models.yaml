@@ -127,6 +127,18 @@ invoices:
                        # pages take too long.
   date_format: "%d-%b-%Y"   # dates in the sheet: 31-Mar-2026
 
+# The SQL connector: with a database picked in the chat, the model answers
+# from it by calling tools (list tables, read a table's columns, run a
+# read-only query). Databases are added on the Databases page. Local models
+# only, always: rows never leave this machine. The model must call tools:
+# `ollama show qwen3:14b` lists "tools" under Capabilities.
+sql:
+  model: documents     # id of a local model below (qwen3:14b). Used with Auto, and when the
+                       # picked model cannot call tools. Empty = the first local model that can.
+  max_rows: 200        # rows one query can give the model
+  timeout: 30          # seconds a query may run before the database stops it
+  max_rounds: 8        # tool calls in a row before the model must answer with what it has
+
 # Picked when the user has not chosen a model yet (and Auto is off). Falls back to the first
 # available model if this one is not pulled.
 default_model: general

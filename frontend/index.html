@@ -52,8 +52,8 @@ img,svg{display:block}
   /* Chat (typed text and replies never drop below a readable size) */
   --type-fs:max(12px,calc(12.5*var(--u)));
   --msg-fs:max(13px,calc(13.5*var(--u)));
-  --ui-fs:max(11px,calc(11.5*var(--u)));
-  --ui-sm:max(10px,calc(9.5*var(--u)));
+  --ui-fs:max(12.5px,calc(11.5*var(--u)));
+  --ui-sm:max(11.5px,calc(9.5*var(--u)));
 }
 @supports (height:100dvh){
   :root{--u:min(0.06410256vw,0.12400794dvh);--vu:0.09920635dvh}
@@ -214,7 +214,7 @@ button{cursor:pointer}
 /* ───────── Model menu ───────── */
 .menu{
   position:absolute;z-index:20;right:calc(-10*var(--u));bottom:calc(100% + 12*var(--u));
-  width:max(230px,calc(250*var(--u)));max-height:min(46vh,340px);overflow-y:auto;scrollbar-width:thin;
+  width:max(270px,calc(280*var(--u)));max-height:min(52vh,420px);overflow-y:auto;scrollbar-width:thin;
   padding:6px;border-radius:14px;
   background:rgba(24,24,27,.97);border:1px solid rgba(255,255,255,.09);
   box-shadow:0 18px 50px rgba(0,0,0,.45);
@@ -226,11 +226,14 @@ button{cursor:pointer}
 .opt:hover,.opt:focus-visible{background:rgba(255,255,255,.07);outline:none}
 .opt-text{flex:1;min-width:0}
 .opt-name{font-size:var(--ui-fs);font-weight:500;color:#ECECEF;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.opt-sub{font-size:var(--ui-sm);color:#8B8C8E;line-height:1.35;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.opt-sub{font-size:var(--ui-sm);color:#8B8C8E;line-height:1.35;margin-top:2px}
 .opt-dot{flex:none;width:6px;height:6px;border-radius:50%;background:transparent}
-.opt[aria-selected="true"] .opt-dot{background:#F49D70}
+.opt[aria-selected="true"] .opt-dot{width:10px;height:5px;margin-bottom:3px;border:solid #F49D70;border-width:0 0 2px 2px;border-radius:0;background:none;transform:rotate(-45deg)}
 .opt[disabled]{cursor:default}
 .opt[disabled] .opt-name{color:#77787B}
+.menu-head{padding:10px 10px 4px;margin-top:4px;border-top:1px solid rgba(255,255,255,.07);font-size:var(--ui-sm);font-weight:500;color:#77787B;text-transform:uppercase;letter-spacing:.04em}
+.menu-link{display:block;padding:8px 10px;border-radius:9px;font-size:var(--ui-sm);color:#F49D70}
+.menu-link:hover{background:rgba(255,255,255,.07)}
 .menu-note{padding:10px;font-size:var(--ui-fs);line-height:1.5;color:#98999C}
 .menu-note code,.msg code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.92em;background:rgba(255,255,255,.08);padding:.1em .35em;border-radius:5px}
 
@@ -294,9 +297,20 @@ button{cursor:pointer}
 .think summary{display:inline-flex;align-items:center;gap:7px;cursor:pointer;list-style:none;font-weight:500;color:#98999C;user-select:none}
 .think summary::-webkit-details-marker{display:none}
 .think summary::before{content:"";width:6px;height:6px;border-radius:50%;background:#F49D70;animation:dot 1s ease-in-out infinite}
-.think.done summary::before{background:#5E5F62;animation:none}
+/* Once finished, the block's marker is a chevron that shows whether it is open, not another dot. */
+.think.done summary::before{width:5px;height:5px;margin:0 2px;border:solid #77787B;border-width:0 1.5px 1.5px 0;border-radius:0;background:none;animation:none;transform:rotate(-45deg);transition:transform .15s ease}
+.think.done[open] summary::before{transform:rotate(45deg)}
 .think-text{margin-top:6px;padding:2px 0 2px 10px;border-left:2px solid rgba(255,255,255,.10);white-space:pre-wrap;line-height:1.5;max-height:8.5em;overflow-y:auto;scrollbar-width:thin}
 .think.done .think-text{max-height:18em}
+/* A database lookup the model made: the query, then what came back. */
+.tool .think-text{white-space:normal;max-height:none}
+.tool pre{margin:0 0 6px;white-space:pre-wrap;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.95em;color:#C9C9CC}
+.tool .tool-err{color:#FBBC94}
+.tool .tool-rows{max-height:14em;overflow:auto;scrollbar-width:thin}
+.tool table{border-collapse:collapse;font-size:.95em}
+.tool th,.tool td{padding:2px 8px;border-bottom:1px solid rgba(255,255,255,.07);text-align:left;white-space:nowrap}
+.tool th{color:#98999C;font-weight:500}
+.pill.db{background:rgba(244,157,112,.16);color:#FBBC94}
 /* Caret at the end of a reply that is still being written. */
 .msg.live .body>.txt:last-child::after,.msg.live .body>pre:last-child code::after{
   content:"";display:inline-block;width:.45em;height:1em;margin-left:2px;vertical-align:-.12em;border-radius:1px;
@@ -331,6 +345,20 @@ button{cursor:pointer}
 .logos text{font-family:var(--font-display);font-weight:700;font-size:23px}
 
 /* ═════════ TABLET: fluid desktop, one-row toolbar ═════════ */
+/* Readability floors. The design scales with the window (--u), which on a laptop screen made the
+   composer's text 8-10px. Positions stay as designed; text, chips and their padding get a minimum. */
+.ph{font-size:max(13px,calc(var(--ph-fs)*var(--u)))}
+.chip{
+  width:auto;min-width:calc(var(--cw)*var(--u));height:max(30px,calc(var(--chip-h)*var(--u)));
+  padding:0 max(11px,calc(11*var(--u))) 0 max(10px,calc(var(--pl)*var(--u)));gap:max(5px,calc(var(--ig)*var(--u)));
+  font-size:max(11.5px,calc(var(--chip-fs)*var(--u)));
+}
+.chip svg{width:max(12px,calc(var(--iw)*var(--u)))}
+.chip span{transform:none}
+.model{font-size:max(12.5px,calc(var(--son-fs)*var(--u)))}
+.model svg{width:max(8px,calc(6.8*var(--u)))}
+.attach svg{width:max(19px,calc(19.79*var(--u)))}
+
 @media (min-width:600px) and (max-width:1180px) and (min-height:600px){
   :root{--u:1px}
   .frame{padding:clamp(24px,3.4vh,44px) clamp(28px,4.2vw,60px) clamp(26px,4.4vh,56px)}
@@ -432,6 +460,7 @@ button{cursor:pointer}
   .anim .links a:nth-child(2){animation-delay:.21s}
   .anim .links a:nth-child(3){animation-delay:.26s}
   .anim .links a:nth-child(4){animation-delay:.31s}
+  .anim .links a:nth-child(4){animation-delay:.31s}
   .anim .nav>.cta{animation:e-settle-down .55s var(--e-soft) .34s both}
   .anim .h1{animation:e-focus 1s var(--e-primary) .30s both;will-change:transform,opacity}
   .anim .card{animation:e-panel .90s var(--e-primary) .62s both;will-change:transform,opacity}
@@ -472,6 +501,7 @@ button{cursor:pointer}
         <a href="#">Features</a>
         <a href="#">Examples</a>
         <a href="documents.html">Docs</a>
+        <a href="databases.html">Databases</a>
       </nav>
       <a class="cta" href="#" data-start><span>Get Started</span></a>
       <label class="burger" for="menu" aria-label="Menu">
@@ -485,6 +515,7 @@ button{cursor:pointer}
           <a href="#">Features</a>
           <a href="#">Examples</a>
           <a href="documents.html">Docs</a>
+          <a href="databases.html">Databases</a>
           <a class="cta" href="#" data-start><span>Get Started</span></a>
         </div>
       </div>
@@ -570,6 +601,7 @@ button{cursor:pointer}
   /* Set window.FASTSHOT_API before this script to point at a backend on another origin. */
   const API = (window.FASTSHOT_API || '').replace(/\/$/, '');
   const MODEL_KEY = 'fastshot.model';
+  const DB_KEY = 'fastshot.database';
   const MAX_DOC_BYTES = 20 * 1024 * 1024;
   const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
@@ -579,12 +611,18 @@ button{cursor:pointer}
     send: $('send'), figma: $('figma'), figmaUrl: $('figma-url'),
     fileAny: $('file-any'), fileImg: $('file-img'),
   };
-  const state = { models: [], model: null, offline: false, messages: [], attachments: [], busy: false, abort: null };
-
-  const store = {
-    get() { try { return localStorage.getItem(MODEL_KEY); } catch { return null; } },
-    set(v) { try { localStorage.setItem(MODEL_KEY, v); } catch {} },
+  const state = {
+    models: [], model: null, offline: false, messages: [], attachments: [], busy: false, abort: null,
+    databases: [], database: null, /* a saved connection the model answers from (databases.html) */
   };
+
+  const keep = (key) => ({
+    get() { try { return localStorage.getItem(key); } catch { return null; } },
+    set(v) { try { if (v) localStorage.setItem(key, v); else localStorage.removeItem(key); } catch {} },
+  });
+  const store = keep(MODEL_KEY);
+  const dbStore = keep(DB_KEY);
+  state.database = dbStore.get();
   const node = (tag, cls, text) => {
     const n = document.createElement(tag);
     if (cls) n.className = cls;
@@ -609,7 +647,24 @@ button{cursor:pointer}
       state.model = null;
       state.offline = true;
     }
+    await loadDatabases();
     renderModels();
+  }
+  async function loadDatabases() {
+    try {
+      const res = await fetch(API + '/api/sql/connections');
+      if (!res.ok) throw new Error(String(res.status));
+      state.databases = (await res.json()).connections;
+      if (state.database && !state.databases.some((d) => d.id === state.database)) setDatabase(null);
+    } catch {
+      state.databases = [];
+    }
+    renderAttachments();
+  }
+  function setDatabase(id) {
+    state.database = id;
+    dbStore.set(id);
+    renderAttachments();
   }
 
   function renderModels() {
@@ -649,6 +704,35 @@ button{cursor:pointer}
       note.append('No models are pulled yet. Start Ollama, then run ', node('code', '', 'ollama pull llama3.2:3b'), '.');
       el.menu.append(note);
     }
+    renderDatabases();
+  }
+
+  /* The model menu's second part: answer from a saved database, or not. */
+  function renderDatabases() {
+    el.menu.append(node('p', 'menu-head', 'Answer from a database'));
+    for (const d of [null, ...state.databases]) {
+      const opt = node('button', 'opt');
+      opt.type = 'button';
+      opt.setAttribute('role', 'option');
+      opt.setAttribute('aria-selected', String((d ? d.id : null) === state.database));
+      const text = node('span', 'opt-text');
+      text.append(
+        node('span', 'opt-name', d ? d.id : 'No database'),
+        node('span', 'opt-sub', d ? d.label + ' · read-only, local models only' : 'Chat as usual'),
+      );
+      text.firstChild.style.display = text.lastChild.style.display = 'block';
+      opt.append(text, node('span', 'opt-dot'));
+      opt.addEventListener('click', () => {
+        setDatabase(d ? d.id : null);
+        renderModels();
+        toggleMenu(false);
+        el.prompt.focus();
+      });
+      el.menu.append(opt);
+    }
+    const manage = node('a', 'menu-link', state.databases.length ? 'Manage databases →' : 'Connect a database →');
+    manage.href = 'databases.html';
+    el.menu.append(manage);
   }
 
   function toggleMenu(open) {
@@ -670,6 +754,16 @@ button{cursor:pointer}
   /* ── Attachments ── */
   function renderAttachments() {
     el.attachments.querySelectorAll('.pill:not(.warn)').forEach((p) => p.remove());
+    if (state.database) {
+      const pill = node('span', 'pill db');
+      pill.title = 'Replies come from the database "' + state.database + '", queried read-only by a local model';
+      const remove = node('button', '', '×');
+      remove.type = 'button';
+      remove.setAttribute('aria-label', 'Stop answering from ' + state.database);
+      remove.addEventListener('click', () => setDatabase(null));
+      pill.append(node('span', '', 'Database: ' + state.database), remove);
+      el.attachments.append(pill);
+    }
     state.attachments.forEach((a, i) => {
       const pill = node('span', a.pending ? 'pill pending' : 'pill');
       pill.title = a.name;
@@ -903,6 +997,7 @@ button{cursor:pointer}
     let answeredBy = state.model; /* with Auto, replaced by the model the router picked */
     let thought = '';
     let think = null; /* the live "Thinking" block, created when the first reasoning arrives */
+    let tool = null; /* the database lookup that is running */
     let frame = 0;
     const startThinking = () => {
       const box = node('details', 'think');
@@ -931,6 +1026,44 @@ button{cursor:pointer}
       if (answer) out.body.innerHTML = render(answer);
       follow.keep();
     };
+    /* One database lookup: what the model asked for, then what came back. */
+    const TOOL_NAMES = { list_databases: 'Listing databases', list_tables: 'Listing tables', get_table_schema: 'Reading columns', query: 'Running a query' };
+    const addTool = (event) => {
+      const box = node('details', 'think tool');
+      const label = node('summary', '', (TOOL_NAMES[event.name] || event.name) + '…');
+      const text = node('div', 'think-text');
+      const args = event.args || {};
+      if (args.sql_query) text.append(node('pre', '', args.sql_query));
+      else if (args.table_name) text.append(node('pre', '', args.table_name));
+      box.append(label, text);
+      out.body.before(box);
+      follow.keep();
+      return { box, label, text, name: event.name };
+    };
+    const showToolResult = (t, event) => {
+      t.box.classList.add('done');
+      const what = { list_databases: 'Listed databases', list_tables: 'Listed tables', get_table_schema: 'Read the columns of ' + (event.table || 'a table'), query: 'Ran a query' }[t.name] || t.name;
+      if (event.error) {
+        t.label.textContent = what + ' · refused or failed';
+        t.text.append(node('div', 'tool-err', event.error));
+        return;
+      }
+      t.label.textContent = what + (event.database ? ' on ' + event.database : '') + ' · ' + event.rows + (event.rows === 1 ? ' row' : ' rows') + (event.truncated ? ' (more not read)' : '');
+      if (!event.columns || !event.columns.length) return;
+      const table = node('table');
+      const head = node('tr');
+      for (const c of event.columns) head.append(node('th', '', c));
+      table.append(head);
+      for (const row of event.preview || []) {
+        const tr = node('tr');
+        for (const v of row) tr.append(node('td', '', v == null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v)));
+        table.append(tr);
+      }
+      const wrap = node('div', 'tool-rows');
+      wrap.append(table);
+      if ((event.preview || []).length < event.rows) wrap.append(node('div', '', 'First ' + event.preview.length + ' of ' + event.rows + ' rows shown.'));
+      t.text.append(wrap);
+    };
     const fail = (text) => {
       out.bubble.classList.add('err');
       out.body.textContent = text;
@@ -943,7 +1076,7 @@ button{cursor:pointer}
       const res = await fetch(API + '/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: state.model, messages: history }),
+        body: JSON.stringify({ model: state.model, messages: history, database: state.database || undefined }),
         signal: state.abort.signal,
       });
       if (!res.ok) {
@@ -966,21 +1099,30 @@ button{cursor:pointer}
           if (event.type === 'route') {
             /* Auto picked a model for this message: show which one, and why on hover. */
             answeredBy = event.model;
-            out.name.textContent = 'Auto · ' + event.label;
-            out.name.title = 'Routed by ' + event.source
+            out.name.textContent = (event.source === 'database' ? 'Database · ' : event.source === 'picked' ? '' : 'Auto · ') + event.label;
+            out.name.title = event.source === 'database' || event.source === 'picked'
+              ? 'Answers from the database "' + state.database + '", queried read-only on this machine'
+              : 'Routed by ' + event.source
               + (event.route ? ' to "' + event.route + '"' : '')
               + (event.confidence != null ? ' (confidence ' + event.confidence + ')' : '');
             if (event.note) out.body.before(node('div', 'note', event.note));
           } else if (event.type === 'notice') {
             out.body.before(node('div', 'note', event.message));
           } else if (event.type === 'thinking') {
-            if (!think) think = startThinking();
+            /* After a lookup the model thinks again: that goes in a block of its own, below the lookup. */
+            if (!think || think.closed) { endThinking(); think = startThinking(); thought = ''; }
             thought += event.content;
             if (!frame) frame = requestAnimationFrame(paint);
           } else if (event.type === 'delta') {
             endThinking();
             answer += event.content;
             if (!frame) frame = requestAnimationFrame(paint);
+          } else if (event.type === 'tool_call') {
+            endThinking();
+            tool = addTool(event);
+          } else if (event.type === 'tool_result') {
+            if (tool) showToolResult(tool, event);
+            tool = null;
           } else if (event.type === 'done') {
             const s = event.stats || {};
             out.stats.textContent = [s.tokens_per_second && s.tokens_per_second + ' tok/s', s.total_seconds && s.total_seconds + 's']

@@ -10,6 +10,7 @@ FOLDERS (each has one job; calls only go frontend -> backend -> documents -> oll
               documents.html - the Word documents page (the Docs link).
               invoices.html - its Invoices tab: invoices into a sheet.
               word.html - its Word document tab: sources into a designed document.
+              databases.html - saved database connections (the SQL connector).
               Talks to the backend only through /api/* over HTTP.
   backend/    FastAPI app (Python). Receives HTTP requests, calls the
               ollama_pipeline package, and serves frontend/ at "/".
@@ -23,6 +24,8 @@ FOLDERS (each has one job; calls only go frontend -> backend -> documents -> oll
                 config.local/        optional copy of config/ for this machine
                                      only (not in git, used when present)
                 ollama_pipeline/client.py     raw HTTP calls to Ollama
+                ollama_pipeline/llamacpp.py   the same calls to a llama.cpp llama-server
+                config.llamacpp/     models.yaml for llama-server (Gemma 4 12B + Llama 3.1 8B)
                 ollama_pipeline/registry.py   which models exist / are pulled
                 ollama_pipeline/router.py     auto-routing: which model answers
                 ollama_pipeline/opencode.py   cloud answers via `opencode serve`
@@ -44,6 +47,14 @@ FOLDERS (each has one job; calls only go frontend -> backend -> documents -> oll
                 read_invoices.py          the same from a terminal, for a folder
               Its HTTP side is backend/app/documents/ (routes, storage, schemas,
               invoices).
+  sql/        The SQL connector (package sql_connector), rebuilt from
+              AnythingLLM's SQL agent skill. No model in it.
+                sql_connector/connectors.py  SQLite / PostgreSQL / MySQL, read-only
+                sql_connector/safety.py      refuses any SQL that is not one read
+                sql_connector/store.py       saved connections (backend/data/sql/)
+                sql_connector/tools.py       the four tools the model calls
+              Its HTTP side is backend/app/sql/ (/api/sql/connections ...); the chat
+              side is /api/chat with `database` set.
   run.sh      starts the backend on http://127.0.0.1:8000
   run.ps1     the same for Windows PowerShell
 
@@ -169,6 +180,18 @@ RUN
   If it says the port is in use, the app is already running.
   After changing backend/ or ollama/ code: Ctrl+C and ./run.sh again.
   After changing frontend/: just refresh the browser.
+
+SQL CONNECTOR (a database picked in the chat's model menu)
+  POST /api/chat {model, messages, database} -> select_tool_model picks a local
+  model that calls tools (sql.model in models.yaml) -> chat_stream offers it the
+  tools list_databases, list_tables, get_table_schema, query -> each call it makes
+  is run by sql_connector (tool_call / tool_result events) and the result goes
+  back to it, until it answers in text (at most sql.max_rounds calls).
+
+LLAMA.CPP (instead of Ollama)
+  A host in models.yaml written {url: ..., kind: llamacpp} is a llama-server.
+  registry.py gives it a LlamaCppClient, which talks to /v1/chat/completions and
+  hands back the same chunks as Ollama's /api/chat, so nothing above it changes.
 
 HOW TO MODIFY
   Add/rename a model, system prompt, or Ollama server -> ollama/config/models.yaml

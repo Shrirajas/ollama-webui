@@ -26,8 +26,11 @@ class ModelAlias:
     description: str = ""
     system: str = ""
     options: dict[str, Any] = field(default_factory=dict)
-    vision: bool | None = None  # None = ask Ollama
-    provider: str = "ollama"  # "ollama" (local) or "opencode" (cloud)
+    vision: bool | None = None  # None = ask the server
+    tools: bool | None = None  # None = ask the server whether the model can call tools
+    # "ollama" = local: answered on one of `hosts:`, an Ollama server or a llama-server alike.
+    # "opencode" = cloud.
+    provider: str = "ollama"
 
 
 @dataclass(frozen=True)
@@ -59,6 +62,16 @@ class InvoicesConfig:
     max_pages: int = 40  # pages read from one file
     image_side: int = 1600  # size of the page picture sent to the model: the longer side of an A4 page, in pixels
     date_format: str = "%d-%b-%Y"  # how dates are written in the sheet: 31-Mar-2026
+
+
+@dataclass(frozen=True)
+class SqlConfig:
+    """Settings of the SQL connector: the chat answering from a database."""
+
+    model: str = ""  # id of the local model that queries databases; empty = the first local model that calls tools
+    max_rows: int = 200  # rows one query may return to the model
+    timeout: int = 30  # seconds one query may run before the database stops it
+    max_rounds: int = 8  # tool calls in a row before the model must answer with what it has
 
 
 @dataclass(frozen=True)
@@ -109,6 +122,9 @@ class PipelineConfig:
     opencode: OpenCodeConfig = field(default_factory=OpenCodeConfig)
     documents: DocumentsConfig = field(default_factory=DocumentsConfig)
     invoices: InvoicesConfig = field(default_factory=InvoicesConfig)
+    sql: SqlConfig = field(default_factory=SqlConfig)
+    # What runs on each host: "ollama", or "llamacpp" for a llama.cpp llama-server.
+    host_kinds: dict[str, str] = field(default_factory=dict)
 
 
 def config_dir() -> Path:
@@ -126,14 +142,30 @@ def config_dir() -> Path:
     return local if (local / "models.yaml").exists() else default
 
 
-def _normalize_url(url: str) -> str:
+HOST_KINDS = ("ollama", "llamacpp")
+_DEFAULT_PORTS = {"ollama": 11434, "llamacpp": 8080}
+
+
+def _normalize_url(url: str, kind: str = "ollama") -> str:
     """Accepts the forms OLLAMA_HOST allows: host, host:port or a full URL."""
     url = url.strip().rstrip("/")
     if "://" not in url:
         url = f"http://{url}"
     if not re.search(r":\d+$", url):
-        url = f"{url}:11434"
+        url = f"{url}:{_DEFAULT_PORTS[kind]}"
     return url
+
+
+def _host(name: str, value: Any) -> tuple[str, str]:
+    """A `hosts:` entry: a URL (an Ollama server), or {url: ..., kind: ollama | llamacpp}."""
+    if isinstance(value, dict):
+        kind = value.get("kind") or "ollama"
+        if kind not in HOST_KINDS:
+            raise ValueError(f"models.yaml: host '{name}' has unknown kind '{kind}' (use ollama or llamacpp)")
+        if not value.get("url"):
+            raise ValueError(f"models.yaml: host '{name}' needs a url")
+        return _normalize_url(str(value["url"]), kind), kind
+    return _normalize_url(str(value)), "ollama"
 
 
 def _read(path: Path) -> dict[str, Any]:
@@ -209,21 +241,38 @@ def _invoices(raw: dict[str, Any], models: dict[str, ModelAlias]) -> InvoicesCon
     )
 
 
+def _sql(raw: dict[str, Any], models: dict[str, ModelAlias]) -> SqlConfig:
+    model = raw.get("model") or ""
+    if model and model not in models:
+        raise ValueError(f"models.yaml: sql.model '{model}' is not a defined model")
+    if model and models[model].provider != "ollama":
+        raise ValueError(f"models.yaml: sql.model '{model}' must be a local (Ollama) model")
+    return SqlConfig(
+        model=model,
+        max_rows=min(5000, max(1, int(raw.get("max_rows", 200)))),
+        timeout=min(600, max(1, int(raw.get("timeout", 30)))),
+        max_rounds=min(20, max(1, int(raw.get("max_rounds", 8)))),
+    )
+
+
 def load_config(directory: Path | None = None) -> PipelineConfig:
     directory = directory or config_dir()
     log.info("Config: %s", directory)
     raw = _read(directory / "models.yaml")
 
-    hosts = {name: _normalize_url(url) for name, url in (raw.get("hosts") or {}).items()}
+    parsed = {name: _host(name, value) for name, value in (raw.get("hosts") or {}).items()}
+    hosts = {name: url for name, (url, _) in parsed.items()}
+    kinds = {name: kind for name, (_, kind) in parsed.items()}
     default_host = raw.get("default_host") or next(iter(hosts), "local")
     hosts.setdefault(default_host, DEFAULT_URL)
+    kinds.setdefault(default_host, "ollama")
 
     for name in hosts:
         override = os.environ.get(f"OLLAMA_HOST_{re.sub(r'[^A-Za-z0-9]', '_', name).upper()}")
         if override:
-            hosts[name] = _normalize_url(override)
+            hosts[name] = _normalize_url(override, kinds[name])
     if os.environ.get("OLLAMA_HOST"):
-        hosts[default_host] = _normalize_url(os.environ["OLLAMA_HOST"])
+        hosts[default_host] = _normalize_url(os.environ["OLLAMA_HOST"], kinds[default_host])
 
     models = []
     for item in raw.get("models") or []:
@@ -243,6 +292,7 @@ def load_config(directory: Path | None = None) -> PipelineConfig:
                 system=(item.get("system") or "").strip(),
                 options=item.get("options") or {},
                 vision=item.get("vision"),
+                tools=item.get("tools"),
                 provider=provider,
             )
         )
@@ -265,4 +315,6 @@ def load_config(directory: Path | None = None) -> PipelineConfig:
         }),
         documents=_documents(raw.get("documents") or {}, {m.id: m for m in models}),
         invoices=_invoices(raw.get("invoices") or {}, {m.id: m for m in models}),
+        sql=_sql(raw.get("sql") or {}, {m.id: m for m in models}),
+        host_kinds=kinds,
     )

@@ -10,11 +10,13 @@ from document_engine import DocumentService
 from document_engine.invoices import InvoiceService
 from document_engine.word import WordService
 from ollama_pipeline import Registry, Router, load_config
+from sql_connector import ConnectionStore
 
 from .documents import Library, Store, router as documents_router
 from .documents.invoices import router as invoices_router
 from .documents.word import router as word_router
 from .routes import router
+from .sql import router as sql_router
 
 # uvicorn only sets up its own loggers; without this the pipeline's INFO lines
 # (e.g. "Router: Von is ready") never reach the server log.
@@ -35,6 +37,7 @@ async def lifespan(app: FastAPI):
     app.state.word = WordService(app.state.registry)
     app.state.store = Store(settings.documents_dir, config.documents.keep_hours)
     app.state.library = Library(settings.documents_dir.parent / "templates")
+    app.state.sql_store = ConnectionStore(settings.sql_dir)
     yield
     await app.state.registry.aclose()
 
@@ -46,7 +49,7 @@ def create_app() -> FastAPI:
         app.add_middleware(
             CORSMiddleware,
             allow_origins=settings.cors_origins,
-            allow_methods=["GET", "POST"],
+            allow_methods=["GET", "POST", "PUT", "DELETE"],
             allow_headers=["Content-Type"],
         )
 
@@ -54,6 +57,7 @@ def create_app() -> FastAPI:
     app.include_router(invoices_router, prefix="/api/documents/invoices")  # before the /{job} routes below
     app.include_router(word_router, prefix="/api/documents/word")  # the same
     app.include_router(documents_router, prefix="/api/documents")
+    app.include_router(sql_router, prefix="/api/sql")
 
     # Mounted last so /api and /docs win over the static catch-all.
     if settings.frontend_dir.is_dir():

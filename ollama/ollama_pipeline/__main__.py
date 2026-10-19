@@ -12,16 +12,20 @@ async def main() -> int:
         print(f"config     {config_dir()}")
         health = await registry.health()
         for name, info in health.items():
-            state = f"ok (Ollama {info['version']})" if info["ok"] else "UNREACHABLE"
+            server = "" if registry.kind(name) == "llamacpp" else "Ollama "  # llama-server's version names itself
+            state = f"ok ({server}{info['version']})" if info["ok"] else "UNREACHABLE"
             print(f"host {name:<10} {info['url']:<32} {state}")
 
         missing = []
         print()
         for entry in await registry.list_models():
             cloud = entry.host not in health  # an OpenCode model: nothing to pull, no Ollama host
-            state = "ready" if entry.available else "not available" if cloud else "not pulled"
+            served = not cloud and registry.kind(entry.host) == "llamacpp"
+            state = "ready" if entry.available else "not available" if cloud else "not served" if served else "not pulled"
+            if entry.available and entry.tools:
+                state += ", calls tools"
             print(f"  {entry.id:<28} {entry.model:<24} {entry.host:<8} {state}")
-            if not entry.available and not cloud and health[entry.host]["ok"]:
+            if not entry.available and not cloud and not served and health[entry.host]["ok"]:
                 missing.append(entry.model)
 
         if missing:

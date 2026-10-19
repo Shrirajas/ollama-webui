@@ -20,3 +20,4 @@ class ChatRequest(BaseModel):
     model: str | None = Field(default=None, description="Model id from /api/models; \"auto\" routes per message; omit for the default")
     messages: list[ChatMessage] = Field(min_length=1)
     options: dict[str, Any] | None = Field(default=None, description="Ollama options, e.g. temperature")
+    database: str | None = Field(default=None, description="Id of a saved database connection: the model answers from it with tools")

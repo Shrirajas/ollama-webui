@@ -7,16 +7,19 @@ called goes through `chat_stream`.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import date
 from typing import Any
 
 from .config import Theme
 from .documents import MAX_FILE_CHARS
-from .errors import PipelineError
+from .errors import ModelNotFound, PipelineError
 from .opencode import PROVIDER as OPENCODE, OpenCodeError
 from .registry import ModelEntry, Registry
 from .router import AUTO_ID, Router
+
+# Runs one tool call: (name, arguments) -> (text the model reads, a summary for the page).
+RunTool = Callable[[str, Any], Awaitable[tuple[str, dict[str, Any]]]]
 
 # Rough characters-per-token figure, only used to warn about an overfull context.
 CHARS_PER_TOKEN = 3.5
@@ -109,6 +112,41 @@ async def select_model(
     return entry, event, []
 
 
+async def select_tool_model(
+    registry: Registry, model_id: str | None, preferred: str = ""
+) -> tuple[ModelEntry, dict[str, Any]]:
+    """The local model for a chat that uses tools, and a `route` event saying so.
+
+    The picked model when it is local and can call tools; otherwise `preferred`
+    (an id from models.yaml), else the first local model that can. Never a
+    cloud model: what the tools return stays on this machine.
+    """
+    note = None
+    if model_id not in (AUTO_ID, None):
+        picked = await registry.resolve(model_id)
+        if picked.provider != OPENCODE and picked.tools is not False:
+            return picked, {"type": "route", "model": picked.id, "label": picked.label, "route": None,
+                            "source": "picked", "confidence": None}
+        why = "runs in the cloud" if picked.provider == OPENCODE else "cannot call tools"
+        note = f"{picked.label} {why}, so a local model that can answers from the database."
+
+    entries = [e for e in await registry.list_models() if e.available and e.provider != OPENCODE]
+    chosen = next((e for e in entries if e.id == preferred and e.tools is not False), None)
+    chosen = chosen or next((e for e in entries if e.tools), None)
+    if chosen is None:
+        if not entries:
+            await registry.resolve(None)  # raises the usual clear error: Ollama down, or nothing pulled
+        raise ModelNotFound(
+            "None of the local models here can call tools, which answering from a database needs. "
+            "Pull one that can, e.g. `ollama pull qwen3:14b`."
+        )
+    event = {"type": "route", "model": chosen.id, "label": chosen.label, "route": None,
+             "source": "database", "confidence": None}
+    if note:
+        event["note"] = note
+    return chosen, event
+
+
 def _context_notice(entry: ModelEntry, payload: list[dict[str, Any]], options: dict[str, Any]) -> str | None:
     limit = options.get("num_ctx")
     if not limit:
@@ -128,9 +166,21 @@ async def chat_stream(
     messages: list[dict[str, Any]],
     options: dict[str, Any] | None = None,
     fallbacks: list[ModelEntry] | None = None,
+    *,
+    tools: list[dict[str, Any]] | None = None,
+    run_tool: RunTool | None = None,
+    max_rounds: int = 8,
 ) -> AsyncIterator[dict[str, Any]]:
-    """Yields {"type": "route" | "notice" | "thinking" | "delta" | "done", ...} events for one reply."""
+    """Yields {"type": "route" | "notice" | "thinking" | "delta" | "tool_call" | "tool_result" | "done", ...} events.
+
+    With `tools` and `run_tool` the model may call those tools: each call is
+    run, its result goes back to the model, and the model is asked again,
+    until it answers without calling one (at most `max_rounds` times). The
+    caller decides what the tools are; this module knows none of them.
+    """
     fallbacks = list(fallbacks or [])
+    if tools and entry.provider == OPENCODE:
+        raise PipelineError(f"{entry.label} runs in the cloud and cannot use this chat's tools. Pick a local model.")
     if entry.provider == OPENCODE and (messages[-1].get("files") or messages[-1].get("images")):
         yield {"type": "notice", "message": f"Attached files are not sent to {entry.label}; it only sees your text."}
     while entry.provider == OPENCODE:
@@ -162,14 +212,42 @@ async def chat_stream(
     if notice:
         yield {"type": "notice", "message": notice}
 
-    async for chunk in registry.client(entry.host).chat_stream(entry.model, payload, merged):
-        message = chunk.get("message") or {}
-        if message.get("thinking"):
-            yield {"type": "thinking", "content": message["thinking"]}
-        if message.get("content"):
-            yield {"type": "delta", "content": message["content"]}
-        if chunk.get("done"):
-            yield {"type": "done", "model": entry.id, "stats": _stats(chunk)}
+    client = registry.client(entry.host)
+    offered = tools if tools and run_tool else None
+    rounds = 0
+    while True:
+        text, calls, last = "", [], {}
+        async for chunk in client.chat_stream(entry.model, payload, merged, tools=offered):
+            message = chunk.get("message") or {}
+            if message.get("thinking"):
+                yield {"type": "thinking", "content": message["thinking"]}
+            if message.get("content"):
+                text += message["content"]
+                yield {"type": "delta", "content": message["content"]}
+            calls += message.get("tool_calls") or []
+            if chunk.get("done"):
+                last = chunk
+        if not calls or not offered:
+            yield {"type": "done", "model": entry.id, "stats": _stats(last)}
+            return
+
+        # The model asked for tools: run them, give it the results, and ask again.
+        payload.append({"role": "assistant", "content": text, "tool_calls": calls})
+        for call in calls:
+            function = call.get("function") or {}
+            name, args = function.get("name") or "", function.get("arguments") or {}
+            yield {"type": "tool_call", "name": name, "args": args}
+            result, summary = await run_tool(name, args)
+            yield {"type": "tool_result", **summary, "name": name}
+            payload.append({"role": "tool", "content": result, "tool_name": name,
+                            **({"tool_call_id": call["id"]} if call.get("id") else {})})
+        if text:
+            yield {"type": "delta", "content": "\n\n"}
+        rounds += 1
+        if rounds >= max_rounds:
+            # Enough lookups: the last turn gets no tools, so the model answers with what it has.
+            offered = None
+            payload.append({"role": "user", "content": "Stop calling tools now and answer with what you found."})
 
 
 def todays_theme(themes: list[Theme], today: date | None = None) -> Theme | None:

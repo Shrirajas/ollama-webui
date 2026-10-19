@@ -11,6 +11,88 @@ back. With "Auto", a router sends each message to a light model, a reasoning
 model or a vision model on this machine, or, for questions about software, to
 OpenCode's free cloud models.
 
+## Running the `tools` branch on the server (llama.cpp, SQL connector)
+
+This branch adds two things, and a round of UI fixes:
+
+- **llama.cpp instead of Ollama.** The server runs llama.cpp's `llama-server`
+  with Gemma 4 12B and Llama 3.1 8B, not Ollama. A host in `models.yaml`
+  written `{url: ..., kind: llamacpp}` is a llama-server: the app talks to its
+  OpenAI API (`/v1/chat/completions`) through
+  `ollama/ollama_pipeline/llamacpp.py`, which gives back the same chunks as
+  Ollama, so the chat, Auto, documents, invoices and the SQL tools work
+  unchanged. A plain URL is still an Ollama server; both can be mixed.
+  `provider: ollama` on a model still means "local" (on one of `hosts:`).
+- **The SQL connector**, rebuilt from AnythingLLM's SQL agent skill
+  (`server/utils/agents/aibitat/plugins/sql-agent/`). Databases are saved on
+  the new **Databases** page (`frontend/databases.html`); picking one in the
+  chat's model menu lets a local model answer from it with four tools:
+  `list_databases`, `list_tables`, `get_table_schema`, `query`. Each lookup
+  is shown in the reply (the query and the first rows).
+
+Steps on the server:
+
+1. **Get the branch.** `git fetch && git checkout tools`
+2. **Install the new packages** (`psycopg[binary]`, `pymysql`, the project's
+   own `sql/`): `pip install -r requirements.txt`, or
+   `cd backend && uv sync --extra router --inexact`. SQLite needs nothing.
+3. **Start both llama-servers with `--jinja`** (tool calls need it), Gemma
+   with `--mmproj` (pictures). The commands are at the top of
+   `ollama/config.llamacpp/models.yaml`: Gemma on port 8080, Llama on 8081.
+4. **Use that config:** `cp -r ollama/config.llamacpp ollama/config.local`
+   (or edit the ports and names in the copy first). If a `config.local`
+   already exists, copy the `hosts:`, `sql:` and model entries into it.
+5. **Check:** `cd backend && python -m ollama_pipeline` lists both hosts as
+   `ok (llama.cpp ...)` and `llama ... ready, calls tools`.
+   `python -m sql_connector` must print that all checks pass.
+6. **Restart**, open <http://127.0.0.1:8000/databases.html>, add a database
+   (Test, then Save), then in the chat open the model menu, pick it under
+   "Answer from a database", and ask about its data. Ctrl+Shift+R first.
+
+Rules to keep:
+
+- **Read-only, three times over.** `safety.py` refuses anything but one
+  SELECT / WITH / SHOW / DESCRIBE / EXPLAIN, and writes hidden inside one
+  (`WITH x AS (DELETE ...)`, `SELECT ... INTO`, `FOR UPDATE`, `pg_sleep`,
+  `nextval`); SQLite is opened `mode=ro`; PostgreSQL and MySQL run every
+  query in a read-only transaction with a time limit (`sql.timeout`).
+  AnythingLLM only asks its model to send SELECTs. Still give the app a
+  database user that can only read.
+- **Local models only.** A database chat never goes to OpenCode; Auto's
+  routing is skipped and `sql.model` answers (or the picked model, when it is
+  local and can call tools; otherwise the reply says which one answers).
+- **Passwords stay on the server**, in `backend/data/sql/connections.json`
+  (mode 600, not in git), as AnythingLLM keeps them. The page never gets them
+  back; leaving the password empty when changing a connection keeps it.
+- **The model never sees more than it asked for:** at most `sql.max_rows`
+  rows per query, and at most `sql.max_rounds` lookups before it must answer.
+- `ollama_pipeline` knows nothing about SQL: `chat_stream` takes any `tools`
+  and a `run_tool` function; the backend passes the SQL ones in.
+
+Not done, check these on the server:
+
+- **No real model has called the tools.** Tested against stand-ins for Ollama
+  and for llama-server that make the calls a model would (including
+  llama-server's way of sending a tool call in pieces). Check that Llama 3.1
+  8B calls `list_tables` before `query` and writes SQL for the right dialect;
+  try `sql.model: gemma` too.
+- Whether Gemma 4's template is seen as able to call tools (`/props`
+  `chat_template` mentions tools). If not, add `tools: true` to its entry.
+- **No live PostgreSQL or MySQL was reached**, only SQLite. Try one of each:
+  Test, Tables, a question, and a write such as "delete the orders" (it must
+  be refused).
+- llama-server answers one request at a time unless started with `-np 2`
+  or more; Auto's router and a reply then wait for each other.
+- `num_ctx` cannot change llama-server's context; its `-c` does.
+
+UI fixes in this branch: the chat composer's text, chips and model name no
+longer shrink below a readable size on laptop screens (floors, positions
+unchanged); the model menu is wider and shows whole descriptions; selected
+items show a tick and finished Thinking / lookup blocks a chevron instead of
+more dots; status dots only show while something is running; the documents
+pages' small text is a size larger and their buttons taller with more padding,
+and a disabled button looks switched off.
+
 ## Running the `11-word` branch on the server
 
 This branch adds the **Word document** tab to the documents page: several
@@ -778,6 +860,11 @@ documents/document_engine/       the Word documents page: engine/ (files) and mo
 documents/document_engine/invoices/   the Invoices tab: reader, checks, export, and the model's part
 documents/document_engine/word/  the Word document tab: sources, renderer, build, and the model's part
 documents/read_invoices.py       invoices from a terminal
+sql/sql_connector/               the SQL connector: connectors, safety, saved connections, tools
+backend/app/sql/                 its HTTP routes (/api/sql/connections)
+frontend/databases.html          its page
+ollama/ollama_pipeline/llamacpp.py   llama-server client (hosts with kind: llamacpp)
+ollama/config.llamacpp/          models.yaml for llama-server: Gemma 4 12B + Llama 3.1 8B
 backend/app/documents/           its HTTP routes and storage
 frontend/documents.html          its page
 frontend/invoices.html           the Invoices tab

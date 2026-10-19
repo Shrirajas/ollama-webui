@@ -52,10 +52,17 @@ class OllamaClient:
         return await self._request("POST", "/api/show", json={"model": model})
 
     async def chat_stream(
-        self, model: str, messages: list[dict[str, Any]], options: dict[str, Any] | None = None
+        self, model: str, messages: list[dict[str, Any]], options: dict[str, Any] | None = None,
+        *, tools: list[dict[str, Any]] | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
-        """Yields Ollama's raw /api/chat chunks as they arrive."""
+        """Yields Ollama's raw /api/chat chunks as they arrive.
+
+        `tools` are function definitions the model may call; its calls arrive as
+        `message.tool_calls`. Only sent when given: most chats have none.
+        """
         payload: dict[str, Any] = {"model": model, "messages": messages, "stream": True}
+        if tools:
+            payload["tools"] = tools
         if options:
             payload["options"] = options
         try:
