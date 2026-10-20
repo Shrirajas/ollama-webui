@@ -1,0 +1,505 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fastshot — Word document</title>
+<meta name="description" content="Several source files in, one designed Word document out, as Word or PDF.">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,100..900&display=block" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+button,input,textarea,select{font:inherit;color:inherit;background:none;border:0}
+svg{display:block}
+[hidden]{display:none!important}
+
+:root{
+  --glass:rgba(41,41,43,.955);
+  --line:rgba(214,228,255,.14);
+  --soft:rgba(255,255,255,.07);
+  --text:#ECECEF; --muted:#98999C; --dim:#77787B;
+  --accent:#F49D70; --warn:#FBBC94; --ok:#8FD3A8;
+}
+html,body{height:100%}
+body{
+  background:#0a0d12;color:var(--text);
+  font-family:Inter,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.5;
+  font-synthesis:none;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
+}
+:focus-visible{outline:2px solid #F8B285;outline-offset:3px;border-radius:6px}
+a{color:inherit;text-decoration:none}
+button{cursor:pointer}
+
+.bg{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:0}
+.shade{position:fixed;inset:0;z-index:0;background:linear-gradient(180deg,rgba(8,10,14,.55),rgba(8,10,14,.78))}
+.page{position:relative;z-index:1;height:100%;overflow-y:auto;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.25) transparent}
+.wrap{max-width:900px;margin:0 auto;padding:clamp(18px,3.2vh,34px) clamp(16px,4vw,32px) 64px}
+
+/* Nav */
+.nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:clamp(26px,5vh,54px)}
+.brand{display:inline-flex;align-items:center;gap:12px;font-size:18.5px;font-weight:500;letter-spacing:-.0154em;text-shadow:0 1px 10px rgba(0,0,0,.3)}
+.brand svg{width:34px;height:34px}
+.links{display:flex;gap:6px}
+.links a{padding:7px 14px;border-radius:10px;font-size:15px;color:#D5D5D8;transition:background .18s ease}
+.links a:hover{background:var(--soft)}
+.links a[aria-current]{background:rgba(255,255,255,.11);color:#fff}
+
+h1{font-size:clamp(26px,4.2vw,36px);font-weight:410;letter-spacing:.0018em;line-height:1.12;text-shadow:0 2px 22px rgba(0,0,0,.3)}
+.lede{margin-top:10px;max-width:66ch;color:#D5D5D8;font-size:15px;text-shadow:0 1px 12px rgba(0,0,0,.35)}
+
+/* The tabs of the documents section; the first four open the Word page */
+.modes{display:flex;flex-wrap:wrap;gap:6px;margin:26px 0 14px}
+.mode{
+  display:inline-flex;align-items:center;height:36px;padding:0 15px;border-radius:11px;font-size:13.5px;font-weight:500;color:#B9BABD;
+  background:linear-gradient(180deg,rgba(255,255,255,.088),rgba(255,255,255,.038));border:1px solid rgba(255,255,255,.06);
+}
+.mode:hover{color:#fff}
+.mode[aria-current]{color:#1d1d20;background:linear-gradient(163deg,#FBBC94,#F49D70 46%,#E88654);border-color:transparent}
+
+.card{
+  border-radius:22px;padding:clamp(16px,2.4vw,24px);margin-bottom:14px;
+  background:var(--glass);-webkit-backdrop-filter:blur(26px) saturate(112%);backdrop-filter:blur(26px) saturate(112%);
+  box-shadow:inset 0 0 0 1px var(--line),0 22px 60px rgba(0,0,0,.30);
+}
+.card h2{font-size:15px;font-weight:600;letter-spacing:-.005em}
+.card h2 small{font-weight:400;color:var(--muted);font-size:13px;margin-left:6px}
+.hint{color:var(--muted);font-size:13px}
+.row{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.gap{margin-top:16px}
+.grow{flex:1}
+
+.drop{
+  display:flex;align-items:center;gap:12px;width:100%;padding:13px 14px;border-radius:14px;text-align:left;
+  background:rgba(255,255,255,.035);border:1px dashed rgba(255,255,255,.2);transition:background .18s ease,border-color .18s ease;
+}
+.drop:hover,.drop.over{background:rgba(255,255,255,.07);border-color:var(--accent)}
+.drop svg{width:22px;height:22px;flex:none;color:var(--muted)}
+.drop b{display:block;font-weight:500;font-size:14px}
+.drop span{display:block;color:var(--muted);font-size:12.5px}
+
+select{
+  max-width:100%;padding:10px 30px 10px 12px;border-radius:12px;background:rgba(0,0,0,.26);appearance:none;cursor:pointer;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.09);color:var(--text);font-size:14px;line-height:1.45;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 5'%3E%3Cpath fill='%2398999C' d='M1 0l3 3 3-3 1 1-4 4-4-4Z'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 11px center;background-size:8px;
+}
+select:focus{outline:none;box-shadow:inset 0 0 0 1px rgba(244,157,112,.7)}
+select option{background:#1c1c1f}
+
+.btn{
+  height:40px;padding:0 20px;border-radius:12px;font-size:14px;font-weight:520;color:#1d1d20;
+  background:linear-gradient(163deg,#FBBC94,#F49D70 46%,#E88654);box-shadow:0 3px 12px rgba(210,110,60,.34);
+}
+.btn:hover{filter:brightness(1.07)} .btn:active{transform:scale(.98)}
+.btn[disabled]{opacity:.45;cursor:default;filter:none;transform:none}
+.btn.ghost{color:var(--text);background:linear-gradient(180deg,#3d3d3f,#1d1d20);box-shadow:inset 0 1px 0 rgba(255,255,255,.10)}
+.mini{height:28px;padding:0 10px;border-radius:9px;font-size:12.5px;font-weight:500;color:#D5D5D8;background:rgba(255,255,255,.08)}
+.mini:hover{background:rgba(255,255,255,.15);color:#fff}
+.mini[aria-pressed="true"]{color:#12301f;background:var(--ok)}
+.link{color:var(--muted);font-size:13px;text-decoration:underline;text-underline-offset:3px}
+.link:hover{color:#fff}
+
+.status{display:flex;align-items:center;gap:9px;color:var(--muted);font-size:13px;min-height:22px}
+.status i{width:7px;height:7px;border-radius:50%;background:var(--accent);animation:pulse 1s ease-in-out infinite}
+.status.err{color:var(--warn)} .status.err i,.status.idle i{animation:none;background:currentColor;opacity:.6}
+@keyframes pulse{0%,100%{opacity:.25}50%{opacity:1}}
+
+/* The source files */
+.file{display:flex;align-items:center;gap:10px 12px;padding:9px 12px;border-radius:12px;background:rgba(255,255,255,.04);margin-top:6px}
+.file .name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13.5px}
+.file .what{color:var(--muted);font-size:12.5px;text-align:right;max-width:58%}
+.file.reading .what{color:var(--accent)} .file.done .what{color:var(--ok)} .file.error .what{color:var(--warn)}
+.file .x{width:20px;height:20px;border-radius:50%;line-height:1;color:var(--muted);flex:none}
+.file .x:hover{color:#fff;background:rgba(255,255,255,.14)}
+.drop.has{border-style:solid;border-color:rgba(255,255,255,.14)} .drop.has svg{color:var(--accent)}
+
+label.cap{display:block;font-size:12.5px;font-weight:500;color:var(--muted);margin-bottom:6px}
+textarea,.in{
+  width:100%;padding:10px 12px;border-radius:12px;background:rgba(0,0,0,.26);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.09);color:var(--text);font-size:14px;line-height:1.45;
+}
+textarea{min-height:84px;resize:vertical;display:block}
+textarea::placeholder,.in::placeholder{color:#77787B}
+textarea:focus,.in:focus{outline:none;box-shadow:inset 0 0 0 1px rgba(244,157,112,.7)}
+#draft{min-height:260px;max-height:60vh;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;line-height:1.55}
+.look{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.opt{display:inline-flex;align-items:center;gap:8px;color:var(--muted);font-size:13px;cursor:pointer}
+.opt input{appearance:auto;width:15px;height:15px;accent-color:#F49D70}
+.swatch{display:flex;align-items:center;gap:8px}
+.swatch input[type=color]{appearance:auto;width:40px;height:40px;padding:0;border-radius:10px;cursor:pointer;background:none}
+a.btn{display:inline-flex;align-items:center}
+a.btn[aria-disabled="true"]{opacity:.45;pointer-events:none}
+.notes{margin-top:8px;color:var(--warn);font-size:12.5px}
+.list{margin:10px 0 0 18px;color:var(--muted);font-size:13px}
+.list .skip{color:var(--warn)}
+
+/* A rough view of the Word file: its text, headings and tables, not its fonts and colours */
+.paper{margin-top:14px;padding:22px clamp(16px,4vw,34px);border-radius:10px;background:#F7F7F5;color:#1b1b1d;max-height:min(72vh,820px);overflow-y:auto;overscroll-behavior:contain;font-size:13.5px;line-height:1.55}
+.paper p{margin:0 0 8px;white-space:pre-wrap;overflow-wrap:anywhere;min-height:.6em}
+.paper .l0{font-size:22px;font-weight:600;margin:0 0 12px}
+.paper .l1{font-size:17px;font-weight:650;margin:14px 0 6px;color:#1F3F66}
+.paper .l2{font-size:15px;font-weight:650;margin:12px 0 5px;color:#2B5A8C}
+.paper .l3{font-size:14px;font-weight:650;margin:10px 0 4px}
+.paper .bullet{padding-left:16px;position:relative}
+.paper .bullet::before{content:"•";position:absolute;left:3px}
+.paper table{border-collapse:collapse;margin:6px 0 12px;width:100%}
+.paper td{border:1px solid #c9c9c6;padding:5px 8px;vertical-align:top;white-space:pre-wrap;font-size:13px;background:none}
+.paper td>p:last-child{margin-bottom:0}
+.pdf{width:100%;height:min(78vh,900px);margin-top:14px;border-radius:10px;background:#fff}
+
+@media (max-width:620px){
+  .links a{padding:7px 10px;font-size:14px}
+  .brand span{display:none}
+  .file{flex-wrap:wrap} .file .what{max-width:100%;text-align:left}
+}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+</style>
+</head>
+<body>
+<video class="bg" autoplay muted loop playsinline preload="auto"
+  src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260826_124724_bc041163-d651-425f-aea3-2acc1efc2c96.mp4"></video>
+<div class="shade"></div>
+
+<div class="page"><div class="wrap">
+  <header class="nav">
+    <a class="brand" href="index.html" aria-label="Fastshot home">
+      <svg viewBox="0 0 34 34" aria-hidden="true"><circle cx="17" cy="17" r="17" fill="#9C86CE"/><circle cx="17" cy="17" r="8.6" fill="#fff"/><circle cx="17" cy="17" r="3.7" fill="#151519"/></svg>
+      <span>Fastshot</span>
+    </a>
+    <nav class="links" aria-label="Primary">
+      <a href="index.html">Chat</a>
+      <a href="documents.html" aria-current="page">Documents</a>
+    </nav>
+  </header>
+
+  <h1>A designed Word document</h1>
+  <p class="lede">Add the files to work from: PDFs, Word files, Excel sheets, CSV or text. A model on this machine reads them together and writes the document; the app turns that into a Word file with a cover, numbered sections, tables and highlighted boxes. Download it as Word or as PDF. Nothing leaves this machine.</p>
+
+  <nav class="modes" aria-label="Documents">
+    <a class="mode" href="documents.html#fill">Fill a template</a>
+    <a class="mode" href="documents.html#edit">Change a document</a>
+    <a class="mode" href="documents.html#create">Write a new one</a>
+    <a class="mode" href="documents.html#library">Template library</a>
+    <a class="mode" href="word.html" aria-current="page">Word document</a>
+    <a class="mode" href="invoices.html">Invoices</a>
+  </nav>
+
+  <!-- What goes in -->
+  <section class="card" id="inputs">
+    <button type="button" class="drop" id="drop">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      <span><b>Add source files</b><span id="drop-sub">PDF, Word (.docx), Excel (.xlsx), CSV or text. Several at once is fine.</span></span>
+    </button>
+    <div id="files"></div>
+
+    <div class="gap">
+      <label class="cap" for="instructions">What should the document be?</label>
+      <textarea id="instructions" placeholder="For example: a quarterly report for the board from these files. Start with a one-page summary, compare this quarter's sales with last quarter's in a table, and end with the three risks that need a decision."></textarea>
+    </div>
+
+    <div class="look gap">
+      <div>
+        <label class="cap" for="template">Kind of document</label>
+        <select id="template" style="width:100%"></select>
+      </div>
+      <div>
+        <label class="cap" for="accent">Colour</label>
+        <div class="swatch">
+          <input type="color" id="accent" value="#2E5AAC" aria-label="Colour of headings, tables and cover">
+          <label class="opt"><input type="checkbox" id="own-colour"> Use this colour</label>
+        </div>
+      </div>
+      <div>
+        <label class="cap">Pages</label>
+        <div style="display:grid;gap:7px">
+          <label class="opt"><input type="checkbox" id="cover"> Cover page</label>
+          <label class="opt"><input type="checkbox" id="toc"> Contents page</label>
+        </div>
+      </div>
+    </div>
+
+    <div class="look gap">
+      <div>
+        <label class="cap" for="author">Author or company <span style="font-weight:400">(on the cover, optional)</span></label>
+        <input class="in" id="author" maxlength="120" autocomplete="off">
+      </div>
+      <div>
+        <label class="cap">Letterhead <span style="font-weight:400">(optional)</span></label>
+        <button type="button" class="drop" id="head" style="padding:9px 12px">
+          <span><b id="head-name">Use your company's letterhead</b><span id="head-sub">A .docx with your header and footer. Its body is replaced.</span></span>
+        </button>
+      </div>
+    </div>
+
+    <div class="row gap">
+      <select id="model" aria-label="Model that writes the document"></select>
+      <span class="grow"></span>
+      <button type="button" class="btn" id="go" disabled>Write the document</button>
+    </div>
+    <div class="status idle gap" id="status" hidden><i></i><span></span></div>
+    <div class="notes" id="notes"></div>
+  </section>
+
+  <!-- The text, as written -->
+  <section class="card" id="writing" hidden>
+    <div class="row">
+      <h2 class="grow">The text <small id="writer"></small></h2>
+      <button type="button" class="btn ghost" id="rebuild" disabled>Build again from this text</button>
+    </div>
+    <p class="hint" style="margin-top:6px">You can change the text here, or the kind of document, colour and pages above, and build again. That does not ask the model, so it takes a second.</p>
+    <textarea class="gap" id="draft" spellcheck="false" aria-label="The document's text, in Markdown"></textarea>
+  </section>
+
+  <!-- What came out -->
+  <section class="card" id="result" hidden>
+    <div class="row">
+      <h2 class="grow" id="result-title"></h2>
+      <a class="btn ghost" id="get-pdf" download>Download PDF</a>
+      <a class="btn" id="get-word" download>Download Word</a>
+    </div>
+    <p class="hint" style="margin-top:6px" id="result-hint"></p>
+    <ul class="list" id="changes"></ul>
+    <div id="view"></div>
+    <div class="gap">
+      <label class="cap" for="refine">Change something in the finished file</label>
+      <textarea id="refine" style="min-height:58px" placeholder="For example: centre the title, replace ACME with Globex, delete the last section."></textarea>
+      <div class="row" style="margin-top:10px">
+        <span class="status idle grow" id="refine-status" hidden><i></i><span></span></span>
+        <span class="grow"></span>
+        <button type="button" class="btn ghost" id="apply">Apply the change</button>
+      </div>
+    </div>
+  </section>
+
+  <input type="file" id="picker" multiple hidden>
+  <input type="file" id="head-picker" accept=".docx,.dotx" hidden>
+</div></div>
+
+<script>
+(() => {
+  const API = (window.FASTSHOT_API || '').replace(/\/$/, '');
+  const $ = (id) => document.getElementById(id);
+  const node = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+  // files: the sources, each with its text once read. head: the letterhead's job id. job: the finished document.
+  const state = { config: null, files: [], next: 1, head: null, job: null, name: '', busy: false };
+
+  function status(el, text, kind) {
+    el.hidden = !text;
+    el.className = 'status ' + (kind || '') + (el.id === 'status' ? ' gap' : ' grow');
+    el.lastElementChild.textContent = text || '';
+  }
+  async function failure(res) {
+    const detail = (await res.json().catch(() => ({}))).detail;
+    return new Error(typeof detail === 'string' ? detail : 'Request failed (' + res.status + ')');
+  }
+  async function stream(path, body, onEvent) {
+    const res = await fetch(API + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!res.ok) throw await failure(res);
+    const reader = res.body.getReader(), decoder = new TextDecoder();
+    let buffer = '';
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let cut;
+      while ((cut = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, cut).trim();
+        buffer = buffer.slice(cut + 1);
+        if (!line) continue;
+        const event = JSON.parse(line);
+        if (event.type === 'error') throw new Error(event.message);
+        onEvent(event);
+      }
+    }
+  }
+
+  const sources = () => state.files.filter((f) => f.content).map((f) => ({ name: f.name, content: f.content }));
+  const reading = () => state.files.some((f) => f.state === 'reading');
+  const options = () => ({
+    template: $('template').value, accent: $('own-colour').checked ? $('accent').value : '',
+    cover: $('cover').checked, toc: $('toc').checked, author: $('author').value.trim(),
+  });
+  function refresh() {
+    const model = !!$('model').value;   // never without a local model picked
+    $('go').disabled = state.busy || !model || reading() || !(sources().length || $('instructions').value.trim());
+    $('rebuild').disabled = state.busy || !$('draft').value.trim();
+    $('apply').disabled = state.busy || !model || !state.job;
+  }
+  function setBusy(busy) { state.busy = busy; refresh(); }
+
+  /* ── Setup ── */
+  const COVER = new Set(['report', 'proposal', 'whitepaper']);   // the templates that come with a cover
+  async function load() {
+    try {
+      const res = await fetch(API + '/api/documents/word/config');
+      if (!res.ok) throw await failure(res);
+      const config = state.config = await res.json();
+      for (const t of config.templates) { const o = node('option', '', t.label + ' — ' + t.about); o.value = t.id; $('template').append(o); }
+      $('cover').checked = COVER.has($('template').value);
+      for (const m of config.models) {
+        const o = node('option', '', m.label + (m.available ? '' : ' (not pulled)'));
+        o.value = m.id; o.disabled = !m.available; $('model').append(o);
+      }
+      if (config.default) $('model').value = config.default;
+      else status($('status'), 'No local model is ready. Start Ollama and pull one, then reload this page.', 'err');
+      $('picker').accept = config.accepted.join(',');
+    } catch (err) {
+      status($('status'), err instanceof TypeError ? 'The backend is not reachable. Start it with ./run.sh.' : err.message, 'err');
+    }
+  }
+
+  /* ── Source files ── */
+  function showFiles() {
+    const list = $('files'); list.replaceChildren();
+    for (const f of state.files) {
+      const row = node('div', 'file ' + f.state);
+      const x = node('button', 'x', '×'); x.type = 'button'; x.setAttribute('aria-label', 'Remove ' + f.name);
+      x.addEventListener('click', () => { state.files = state.files.filter((o) => o !== f); showFiles(); });
+      row.append(node('span', 'name', f.name), node('span', 'what', f.what), x);
+      list.append(row);
+    }
+    refresh();
+  }
+  async function add(picked) {
+    for (const file of picked) {
+      const f = { id: state.next++, name: file.name, state: 'reading', what: 'Reading', content: '' };
+      state.files.push(f); showFiles();
+      try {
+        const form = new FormData(); form.append('file', file);
+        const res = await fetch(API + '/api/documents/word/source', { method: 'POST', body: form });
+        if (!res.ok) throw await failure(res);
+        const data = await res.json();
+        f.content = data.content; f.state = 'done';
+        f.what = (data.chars < 1000 ? data.chars + ' characters' : Math.round(data.chars / 1000).toLocaleString() + 'k characters') + (data.truncated ? ' (the start of a longer file)' : '');
+      } catch (err) { f.state = 'error'; f.what = err instanceof TypeError ? 'The backend is not reachable.' : err.message; }
+      showFiles();
+    }
+  }
+  async function addHead(file) {
+    if (!file) return;
+    $('head-name').textContent = file.name; $('head-sub').textContent = 'Checking';
+    try {
+      const form = new FormData(); form.append('file', file);
+      const res = await fetch(API + '/api/documents/upload', { method: 'POST', body: form });
+      if (!res.ok) throw await failure(res);
+      state.head = (await res.json()).job;
+      $('head').classList.add('has'); $('head-sub').textContent = 'Header, footer and margins come from this file. No cover page. Click to change.';
+      $('cover').checked = false; $('cover').disabled = true;
+    } catch (err) {
+      state.head = null; $('head').classList.remove('has'); $('cover').disabled = false;
+      $('head-name').textContent = 'Use your company\'s letterhead'; $('head-sub').textContent = err.message;
+    }
+  }
+
+  /* ── The result ── */
+  function blocks(items, into) {
+    for (const item of items || []) {
+      if (item.type === 'table') {
+        const table = node('table');
+        for (const row of item.rows) {
+          const tr = node('tr');
+          for (const cell of row) { const td = node('td'); if (typeof cell === 'string') td.textContent = cell; else blocks(cell, td); tr.append(td); }
+          table.append(tr);
+        }
+        into.append(table); continue;
+      }
+      const cls = item.style === 'Title' ? 'l0' : item.level ? 'l' + Math.min(item.level, 3) : /^List/.test(item.style) ? 'bullet' : '';
+      const p = node('p', cls, item.text);
+      if (item.align !== 'left') p.style.textAlign = item.align;
+      into.append(p);
+    }
+  }
+  function showResult(data, hint) {
+    state.job = data.job; if (data.name) state.name = data.name;
+    $('result-title').textContent = state.name;
+    $('get-word').href = API + data.download;
+    const pdf = state.config.pdf ? API + '/api/documents/word/' + data.job + '/pdf?v=' + data.version : '';
+    $('get-pdf').toggleAttribute('href', false);
+    if (pdf) $('get-pdf').href = pdf;
+    $('get-pdf').setAttribute('aria-disabled', String(!pdf));
+    $('result-hint').textContent = hint + (pdf ? '' : ' A PDF needs LibreOffice on the server; it is not installed there, so only the Word file can be downloaded.')
+      + ' The file is kept on the server for ' + state.config.keep_hours + ' hours.';
+    const list = $('changes'); list.replaceChildren();
+    for (const line of data.applied || []) list.append(node('li', '', line));
+    for (const line of data.skipped || []) list.append(node('li', 'skip', 'Not done - ' + line));
+    // With LibreOffice the page shows the real thing; without it, the text of the file.
+    const view = $('view'); view.replaceChildren();
+    if (pdf) { const frame = node('iframe', 'pdf'); frame.title = 'The document as a PDF'; frame.src = pdf + '&inline=1'; view.append(frame); }
+    else { const paper = node('div', 'paper'); blocks(data.preview, paper); view.append(paper); }
+    $('result').hidden = false;
+    refresh();
+  }
+
+  /* ── Actions ── */
+  async function write() {
+    setBusy(true); status($('status'), 'Asking the model'); $('notes').textContent = '';
+    let text = '', frame = 0;
+    const draft = $('draft'); draft.value = ''; $('writing').hidden = false; $('result').hidden = true; state.job = null;
+    const draw = () => { frame = 0; draft.value = text; draft.scrollTop = draft.scrollHeight; };
+    try {
+      await stream('/api/documents/word/create',
+        { model: $('model').value || null, instructions: $('instructions').value, sources: sources(), options: options(), letterhead: state.head }, (e) => {
+          if (e.type === 'model') $('writer').textContent = 'written by ' + e.label;
+          else if (e.type === 'notice') $('notes').textContent = e.message;
+          else if (e.type === 'progress') status($('status'), e.message);
+          else if (e.type === 'thinking') status($('status'), 'Thinking');
+          else if (e.type === 'delta') { text += e.content; status($('status'), 'Writing'); if (!frame) frame = requestAnimationFrame(draw); }
+          else if (e.type === 'result') { text = e.markdown; status($('status'), ''); showResult(e, 'Built from the text above.'); }
+        });
+    } catch (err) { status($('status'), err instanceof TypeError ? 'The backend is not reachable. Start it with ./run.sh.' : err.message, 'err'); }
+    cancelAnimationFrame(frame); draw();
+    setBusy(false);
+    if (state.job) $('result').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  async function rebuild() {
+    setBusy(true); status($('status'), 'Building the Word file');
+    try {
+      const res = await fetch(API + '/api/documents/word/build', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ markdown: $('draft').value, options: options(), letterhead: state.head }),
+      });
+      if (!res.ok) throw await failure(res);
+      status($('status'), ''); showResult(await res.json(), 'Built again from the text above.');
+      $('result').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch (err) { status($('status'), err.message, 'err'); }
+    setBusy(false);
+  }
+  async function change() {
+    const instructions = $('refine').value.trim();
+    if (!instructions) return;
+    setBusy(true); status($('refine-status'), 'Asking the model');
+    try {
+      await stream('/api/documents/' + state.job + '/edit', { model: $('model').value || null, instructions }, (e) => {
+        if (e.type === 'progress') status($('refine-status'), e.message);
+        else if (e.type === 'result') {
+          status($('refine-status'), '');
+          showResult(e, e.summary || (e.applied.length ? 'Changed.' : 'Nothing was changed.'));
+          $('refine').value = '';
+        }
+      });
+    } catch (err) { status($('refine-status'), err.message, 'err'); }
+    setBusy(false);
+  }
+
+  /* ── Wiring ── */
+  const drop = $('drop');
+  drop.addEventListener('click', () => $('picker').click());
+  $('picker').addEventListener('change', (e) => { add([...e.target.files]); e.target.value = ''; });
+  for (const type of ['dragenter', 'dragover']) drop.addEventListener(type, (e) => { e.preventDefault(); drop.classList.add('over'); });
+  for (const type of ['dragleave', 'drop']) drop.addEventListener(type, (e) => { e.preventDefault(); drop.classList.remove('over'); });
+  drop.addEventListener('drop', (e) => add([...e.dataTransfer.files]));
+  $('head').addEventListener('click', () => $('head-picker').click());
+  $('head-picker').addEventListener('change', (e) => { addHead(e.target.files[0]); e.target.value = ''; });
+  $('template').addEventListener('change', () => { if (!state.head) $('cover').checked = COVER.has($('template').value); });
+  $('accent').addEventListener('input', () => { $('own-colour').checked = true; });
+  $('instructions').addEventListener('input', refresh);
+  $('draft').addEventListener('input', refresh);
+  $('go').addEventListener('click', write);
+  $('rebuild').addEventListener('click', rebuild);
+  $('apply').addEventListener('click', change);
+  load();
+})();
+</script>
+</body>
+</html>

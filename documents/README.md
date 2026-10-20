@@ -20,14 +20,34 @@ The Invoices tab has a folder of its own, with the same split:
 document_engine/invoices/
   reader.py     a file (PDF, Word, photo) -> pages: text and/or a picture. No model.
   checks.py     cleans each value, checks it (GSTIN check digit, dates, total against
-                the amount in words), scores the Confidence. No model.
-  export.py     the reviewed rows -> .xlsx or .csv. No model.
+                the amount in words, taxable value + tax against the total, quantity x
+                unit price and the sum of the lines), adds up the total tax, scores
+                the Confidence. No model.
+  export.py     the reviewed rows -> .xlsx or .csv, one row for each line of an
+                invoice. No model.
   prompts.py    the model's part: what it is told, and the JSON it must answer in
   service.py    the model's part: one page at a time to the local model
 read_invoices.py   the same from a terminal:
                    cd backend && python ../documents/read_invoices.py <folder> --out out.xlsx
 ```
 
+The Word document tab has a folder of its own too:
+
+```
+document_engine/word/
+  sources.py    a source file (PDF, Word, Excel, CSV, text) -> its text. No model.
+  renderer.py   Markdown with frontmatter -> a designed .docx: seven templates, cover,
+                numbered headings, tables, callouts, signatures, contents page. No model.
+                From "Generate Documents" by IANUSTEC (MIT), without its Open WebUI
+                and network parts.
+  build.py      what the user chose on the page + the Markdown -> the file. No model.
+  prompts.py    the model's part: what it is told, and the Markdown it may write
+  service.py    the model's part: all sources to the local model, the text streamed back
+```
+
+Check it without a model: `cd backend && python -m document_engine.word`
+
+- The Word document page: `frontend/word.html`; its routes: `backend/app/documents/word.py`
 - HTTP routes and file storage: `backend/app/documents/` (`invoices.py` for the Invoices tab)
 - The Invoices page: `frontend/invoices.html`; its settings: the `invoices:` block in `models.yaml`
 - The page: `frontend/documents.html`

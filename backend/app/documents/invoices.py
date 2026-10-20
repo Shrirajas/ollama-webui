@@ -13,7 +13,8 @@ import time
 from typing import Literal
 
 from document_engine.invoices import ACCEPTED, COLUMNS, to_csv, to_xlsx
-from document_engine.invoices.checks import EXPECTED, MISSING, SCORE, WEIGHT
+from document_engine.invoices.export import Options
+from document_engine.invoices.checks import AMOUNTS, EXPECTED, ITEM_FIELDS, MISSING, ROUND_OFF, SCORE, WEIGHT
 from fastapi import APIRouter, Form, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
@@ -26,6 +27,11 @@ XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 router = APIRouter()
 
 
+class Line(BaseModel):
+    values: dict[str, str] = Field(default_factory=dict)
+    levels: dict[str, str] = Field(default_factory=dict)
+
+
 class Row(BaseModel):
     file: str = ""
     pages: list[int] = Field(default_factory=list)
@@ -34,12 +40,17 @@ class Row(BaseModel):
     levels: dict[str, str] = Field(default_factory=dict)
     notes: dict[str, str] = Field(default_factory=dict)
     confidence: float | None = None
+    items: list[Line] = Field(default_factory=list, max_length=500, description="The lines of the invoice: each is a row of the sheet")
 
 
 class ExportRequest(BaseModel):
     rows: list[Row] = Field(max_length=5000)
     format: Literal["xlsx", "csv"] = "xlsx"
-    checks: bool = Field(default=False, description="xlsx only: add a second sheet listing what to check and why")
+    checks: bool = Field(default=False, description="xlsx only: add a sheet listing what to check and why")
+    summary: bool = Field(default=False, description="xlsx only: add a sheet with one row for each invoice, without its lines")
+    totals: bool = Field(default=False, description="xlsx only: add a last row that adds up the amounts")
+    repeat_details: bool = Field(default=False, description="Write the invoice's number, date, seller and buyer on every one of its rows")
+    repeat_totals: bool = Field(default=False, description="Write the invoice's total and taxes on every one of its rows")
 
 
 @router.get("/config")
@@ -49,8 +60,10 @@ async def config(request: Request):
     return {
         "default": default, "models": models, "accepted": list(ACCEPTED), "columns": [list(c) for c in COLUMNS],
         "max_upload_mb": MAX_UPLOAD_BYTES // (1024 * 1024), "max_pages": service.config.max_pages,
+        # Which columns belong to a line of an invoice, and which are the invoice's own figures.
+        "item_fields": list(ITEM_FIELDS), "amounts": list(AMOUNTS),
         # How the Confidence column is worked out, so the page can redo it when a value is edited.
-        "scoring": {"weight": WEIGHT, "score": SCORE, "missing": MISSING, "expected": EXPECTED},
+        "scoring": {"weight": WEIGHT, "score": SCORE, "missing": MISSING, "expected": EXPECTED, "round_off": ROUND_OFF},
     }
 
 
@@ -73,12 +86,13 @@ async def export(body: ExportRequest, request: Request):
     if not rows:
         raise HTTPException(400, "There are no rows to download yet.")
     stamp = time.strftime("%Y-%m-%d_%H%M")
+    options = Options(body.repeat_details, body.repeat_totals, body.checks, body.summary, body.totals)
     if body.format == "csv":
-        data, kind = to_csv(rows), "text/csv; charset=utf-8"
+        data, kind = to_csv(rows, options), "text/csv; charset=utf-8"
     else:
         date_format = request.app.state.invoices.config.date_format
         try:
-            data, kind = await run_in_threadpool(to_xlsx, rows, date_format, body.checks), XLSX
+            data, kind = await run_in_threadpool(to_xlsx, rows, date_format, options), XLSX
         except ImportError as exc:
             raise HTTPException(500, "Excel files need the openpyxl package on the server: run `pip install -r requirements.txt`.") from exc
     return Response(data, media_type=kind, headers={"Content-Disposition": f'attachment; filename="invoices_{stamp}.{body.format}"'})

@@ -30,6 +30,7 @@ for folder in (HERE, HERE.parent / "ollama"):  # lets it run from a checkout, wi
         sys.path.append(str(folder))
 
 from document_engine.invoices import ACCEPTED, InvoiceService, to_csv, to_xlsx  # noqa: E402
+from document_engine.invoices.export import Options  # noqa: E402
 from ollama_pipeline import PipelineError, Registry, UnsupportedDocument, load_config  # noqa: E402
 
 
@@ -71,6 +72,14 @@ async def run(args: argparse.Namespace) -> int:
                             v = row["values"]
                             print(f"   {row['confidence']:.2f}  {row['kind']:<8} no. {v['InvoiceId'] or '-':<20} {v['InvoiceDate'] or '-':<12} "
                                   f"{v['InvoiceTotal'] or '-':>12}  {v['VendorName'] or '-'}  ->  {v['CustomerName'] or '-'}")
+                            if v["TotalTaxAmount"] or v["TaxableValue"]:
+                                print(f"         taxable {v['TaxableValue'] or '-'} + tax {v['TotalTaxAmount'] or '-'} "
+                                      f"(C {v['CGSTAmount'] or '-'}, S {v['SGSTAmount'] or '-'}, I {v['IGSTAmount'] or '-'})")
+                            for number, item in enumerate(row["items"], 1):
+                                line = item["values"]
+                                if any(line.values()):
+                                    print(f"         {number:>2}. {line['Description'][:48]:<48} qty {line['Qty'] or '-':<8} "
+                                          f"at {line['UnitPrice'] or '-':>10} = {line['UnitAmount'] or '-':>11}")
                             for field, note in row["notes"].items():
                                 if row["levels"][field] != "ok":
                                     print(f"         {field}: {note}")
@@ -82,7 +91,8 @@ async def run(args: argparse.Namespace) -> int:
                 print(f"   ! {exc}")
         seconds = time.monotonic() - started
         doubtful = sum(level == "check" for row in rows for level in row["levels"].values())
-        print(f"\n{len(rows)} row(s) from {len(files)} file(s) in {seconds:.0f} s; {doubtful} value(s) to check.")
+        lines = sum(len(row["items"]) for row in rows)
+        print(f"\n{len(rows)} document(s), {lines} row(s) in the sheet, from {len(files)} file(s) in {seconds:.0f} s; {doubtful} value(s) to check.")
 
         if args.out:
             out = Path(args.out)
@@ -92,7 +102,7 @@ async def run(args: argparse.Namespace) -> int:
             elif kind == ".json":
                 out.write_text(json.dumps({"model": chosen["model"], "seconds": round(seconds, 1), "rows": rows}, indent=2, ensure_ascii=False), encoding="utf-8")
             else:
-                out.write_bytes(to_xlsx(rows, service.config.date_format, with_checks=True))
+                out.write_bytes(to_xlsx(rows, service.config.date_format, Options(checks=True, summary=True)))
             print(f"Written to {out}")
         return 0
     finally:
