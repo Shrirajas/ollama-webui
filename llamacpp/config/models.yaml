@@ -1,0 +1,129 @@
+# ==========================================================================
+# The models of the llama-server pipeline (PIPELINE=llamacpp in backend/.env).
+# The whole app uses it: the chat, the Documents page, the Word tab and the
+# Invoices tab. Ollama (ollama/config/) is not used in this mode.
+#
+# Auto: each message goes to the model that fits it (`router:` below); or the user
+# picks one of the models.
+# `model:` is a [section] name in llamacpp/server/models.ini.
+# Check:  cd backend && python -m llamacpp_pipeline
+# ==========================================================================
+
+server:
+  url: http://127.0.0.1:8101     # llamacpp/server/start.sh; LLAMACPP_URL overrides
+  api_key_env: LLAMACPP_API_KEY  # the key itself is in backend/.env, not in git
+
+# Options sent with every request unless a model overrides them (none today).
+# num_ctx is not set here: each model's num_ctx is its ctx-size in models.ini, read at
+# startup (Admin Panel -> Models changes it there). The app uses it to warn when a
+# conversation is too long and to share the room between documents; it is not sent.
+default_options: {}
+
+default_model: llama
+
+# Auto-routing, the same Router as on Ollama (ollama_pipeline/router.py) with two routes.
+# Order of decisions: a picture -> gemma; attached files, long or hard requests (code,
+# analysis, maths) -> gemma; a short follow-up stays on the model that answered; the
+# rest -> llama. Von (optional: `cd backend && uv sync --extra router`) decides the
+# cases the keywords miss; without it the keyword rules decide. No cloud routes here:
+# code_route and expert_route are left out on purpose, so nothing leaves this machine.
+# Both models fit on the card together (14.7 of 16 GB), so a route change costs no swap.
+router:
+  enabled: true
+  backend: von
+  device: cpu              # keeps the GPU free for the models
+  min_confidence: 0.7
+  instructions: Which kind of assistant should answer this request?
+  default_route: simple    # light model
+  heavy_route: complex     # the stronger one; also reads documents
+  image_model: gemma       # a message with a picture goes straight here
+  routes:
+    simple:
+      model: llama
+      description: >-
+        Everyday writing and quick questions: emails, messages, replies,
+        rewording, translation, short summaries, simple facts, small talk.
+    complex:
+      model: gemma
+      description: >-
+        Work that needs careful thinking: analysing or reviewing documents,
+        contracts, reports, invoices and data, logic and maths problems,
+        comparing options, multi-step reasoning, code and technical questions.
+
+# The Word-documents page and the Word document tab.
+documents:
+  model: gemma          # tested 13 Oct: llama3.1:8b dropped a file, miscopied a total and repeated itself
+  max_jobs: 2
+  second_check: false
+  keep_hours: 24
+
+# The Invoices tab. The model must read pictures.
+invoices:
+  model: gemma
+  max_jobs: 1
+  max_pages: 40
+  image_side: 1600
+  date_format: "%d-%b-%Y"
+
+# Answering from a database (Databases page; picked in the chat's model menu).
+# The model calls read-only tools; rows never leave this machine.
+sql:
+  model: gemma          # Llama 3.1 fails here (live test 22 Oct: "peg-native format" error, chart series sent as a string)
+  max_rows: 200
+  timeout: 30
+  max_rounds: 8
+
+# The embedding model for search by meaning: EmbeddingGemma-300M on the CPU, in a container
+# of its own (llamacpp/server/start-embed.sh), apart from the chat models' llama-server.
+embed:
+  url: http://127.0.0.1:8102
+
+# Workspaces / Knowledge (Workspaces page; picked in the chat). Passages are found by words
+# and, while the embedding server answers, by meaning. Without it (embed_model "" or the
+# container stopped) by words only. The prefixes are the ones EmbeddingGemma was trained with.
+workspaces:
+  embed_host: embed
+  embed_model: embeddinggemma   # --alias in start-embed.sh
+  query_prefix: "task: search result | query: "
+  document_prefix: "title: none | text: "
+  chunk_chars: 1200
+  overlap_chars: 200
+  top_k: 6
+  max_upload_mb: 50
+
+models:
+  - id: llama
+    label: Llama 3.1 8B
+    model: llama3.1:8b
+    description: Chat and writing
+    tools: false          # not for the built-in skills (database, chart, memory): a picked llama is answered by sql.model, with a note
+    system: |
+      You are an internal assistant for our engineering team. Be direct and
+      concise. Use Markdown, and fenced code blocks for any code.
+
+      How to answer:
+      - Answer the question that was asked, first. Match the depth to it: a
+        short question gets a short answer, a hard one gets steps and reasons.
+      - Reply in the language the user wrote in.
+      - If the request is ambiguous or key details are missing, ask one short
+        clarifying question instead of guessing.
+      - When files are attached, base the answer on their content and quote
+        the exact figures or lines you rely on. If the answer is not in them,
+        say so, and then give what you know, marked as not from the files.
+      - If the file text is unreadable or cut off, say that.
+      - If you are not sure, say so. Never invent facts, numbers or sources.
+      - For code: give working code first, then a brief explanation.
+    options:
+      temperature: 0.6
+
+  - id: gemma
+    label: Gemma 4 12B
+    model: gemma4:12b
+    description: Documents, invoices, screenshots and images
+    vision: true
+    thinking: true
+    options:
+      think: false   # thinking used up the context before a long document was written
+    system: |
+      You are a product engineer. When given a screenshot, describe what it
+      shows precisely before answering the question.

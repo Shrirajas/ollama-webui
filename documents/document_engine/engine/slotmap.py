@@ -160,13 +160,23 @@ def values_schema(slotmap: dict[str, Any], only: str | None = None) -> dict[str,
 def describe(word: WordFile, slotmap: dict[str, Any], only: str | None = None) -> str:
     """The slots as text for a model, each with the template's sample so it knows what kind of thing goes there."""
     def sample(block_id: str) -> str:
+        """The sample, cut short, with its length and the heading it sits under: so a written
+        text is about the right size and on the right subject."""
         text = " ".join(paragraph_text(word.block(block_id).element).split())
-        return text if len(text) <= 90 else text[:87] + "..."
+        shown = text if len(text) <= 90 else text[:87] + "..."
+        where = f', under the heading "{heading[block_id]}"' if heading.get(block_id) else ""
+        return f'{shown}" (about {len(text.split())} words{where})'
+
+    heading, last = {}, ""  # paragraph id -> the nearest heading above it
+    for block in word.blocks:
+        if block.where == "body" and word.heading_level(block.element):
+            last = " ".join(paragraph_text(block.element).split())[:80]
+        heading[block.id] = last
 
     lines = []
     if only in (None, ""):
         for field in slotmap["fields"]:
-            lines.append(f'- "{field["name"]}": one value. The template\'s sample: "{sample(field["id"])}"')
+            lines.append(f'- "{field["name"]}": one value. The template\'s sample: "{sample(field["id"])}')
     for group in slotmap["groups"]:
         if only not in (None, group["name"]):
             continue
@@ -174,13 +184,13 @@ def describe(word: WordFile, slotmap: dict[str, Any], only: str | None = None) -
         names, lists = item_shape(group)
         limit = f" At most {len(group['instances'])} items fit." if group["kind"] == "boxes" else ""
         if len(names) == 1 and not lists:
-            lines.append(f'- "{group["name"]}": a list of values, one per item.{limit} Sample item: "{sample(first["fields"][names[0]])}"')
+            lines.append(f'- "{group["name"]}": a list of values, one per item.{limit} Sample item: "{sample(first["fields"][names[0]])}')
             continue
         lines.append(f'- "{group["name"]}": a list of items, one per entry in the source.{limit} Each item has:')
         for name in names:
-            lines.append(f'    - "{name}". Sample: "{sample(first["fields"][name])}"')
+            lines.append(f'    - "{name}". Sample: "{sample(first["fields"][name])}')
         for name in lists:
-            lines.append(f'    - "{name}": a list of lines. Sample line: "{sample(first["lists"][name][0])}"')
+            lines.append(f'    - "{name}": a list of lines. Sample line: "{sample(first["lists"][name][0])}')
     return "\n".join(lines)
 
 

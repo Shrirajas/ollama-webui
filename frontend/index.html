@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<script src="/auth.js"></script>
 <title>Fastshot — Describe an app. We'll build it.</title>
 <meta name="description" content="Fastshot turns a written description into a working app.">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -196,6 +197,17 @@ button{cursor:pointer}
 }
 .attach svg{width:calc(19.79*var(--u))}
 .attach:hover{color:#fff}
+/* Tools button: one icon and the chevron-to-paperclip gap (42.64u) left of the paperclip. The model picker
+   moves left by as much only while it is shown, so with no tools the toolbar is exactly as designed. */
+.tool-wrap{left:calc((1043.15 - 42.64 - 444)*var(--u));top:calc((515.14 - 505)*var(--u));line-height:0}
+.has-tools .model-wrap{right:calc((1134 - 1013.5 - 6.8 + 42.64)*var(--u))}
+.tbtn{color:#A9AAAD;line-height:0}
+.tbtn svg{width:calc(19.79*var(--u))}
+.tbtn:hover{color:#fff}
+.tbtn.on{color:#F49D70}
+#tools-menu{line-height:1.5}
+#tools-menu .opt{cursor:pointer}
+#tools-menu input{flex:none;accent-color:#F49D70}
 .send{
   left:calc((1084 - 444)*var(--u));top:calc((507 - 505)*var(--u));
   width:calc(var(--send-d)*var(--u));height:calc(var(--send-d)*var(--u));border-radius:50%;
@@ -268,10 +280,10 @@ button{cursor:pointer}
 .thread{display:none}
 .chat .h1,.chat .proof{display:none}
 .chat .frame{padding-bottom:calc(30*var(--vu))}
-.chat .hero{justify-content:flex-end;gap:calc(16*var(--u));padding-top:calc(18*var(--u))}
+.chat .hero{justify-content:flex-end;gap:calc(16*var(--u));padding-top:calc(4*var(--u))}
 .chat .thread{
   flex:1 1 0;min-height:0;display:flex;flex-direction:column;gap:12px;
-  width:calc(var(--card-w)*var(--u));margin-right:calc(3*var(--u));
+  width:calc(930*var(--u));margin-right:calc(3*var(--u));
   overflow-y:auto;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.25) transparent;
   padding:18px 2px 34px;
   -webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 22px);
@@ -297,19 +309,78 @@ button{cursor:pointer}
 .think.done summary::before{background:#5E5F62;animation:none}
 .think-text{margin-top:6px;padding:2px 0 2px 10px;border-left:2px solid rgba(255,255,255,.10);white-space:pre-wrap;line-height:1.5;max-height:8.5em;overflow-y:auto;scrollbar-width:thin}
 .think.done .think-text{max-height:18em}
+/* A tool block with a query's rows (they scroll sideways) or a chart (as tall as it needs). */
+.think-text table{display:block;overflow-x:auto;margin-top:6px;border-collapse:collapse;white-space:nowrap}
+.think-text :is(th,td){padding:2px 8px;border-bottom:1px solid rgba(255,255,255,.07);text-align:left}
+.think-text th{color:#98999C;font-weight:500}
+.think-text :is(b,a){color:#C9C9CC;font-weight:500}
+.think-text a{text-decoration:underline;text-decoration-color:rgba(255,255,255,.25);text-underline-offset:2px}
+.think-text a:hover{color:#F49D70;text-decoration-color:currentColor}
+.think.done .think-text.wide{max-height:none;white-space:normal}
+/* A chart drawn from the create_chart skill */
+.chart{margin:4px 0 6px;padding:10px 12px 8px;border-radius:12px;background:rgba(0,0,0,.22);max-width:640px}
+.chart-title{font-size:var(--ui-fs);font-weight:500;color:#ECECEF;margin-bottom:4px}
+.chart svg{width:100%;height:auto;display:block}
+.chart .c-grid{stroke:rgba(255,255,255,.07)}
+.chart .c-zero{stroke:rgba(255,255,255,.28)}
+.chart .c-label{fill:#98999C;font-size:11px;font-family:inherit}
+.chart-foot{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;margin-top:4px;font-size:var(--ui-sm);color:#98999C}
+.chart-key::before{content:"";display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;background:var(--c)}
+.chart-axis{font-style:italic}
+.chart-copy{margin-left:auto;padding:3px 10px;border-radius:8px;color:#D5D5D8;background:rgba(255,255,255,.07)}
+.chart-copy:hover{background:rgba(255,255,255,.14)}
 /* Caret at the end of a reply that is still being written. */
-.msg.live .body>.txt:last-child::after,.msg.live .body>pre:last-child code::after{
+.msg.live .body>.blk:last-child :is(p,li,code):last-child::after{
   content:"";display:inline-block;width:.45em;height:1em;margin-left:2px;vertical-align:-.12em;border-radius:1px;
   background:#F49D70;animation:caret 1s steps(1) infinite;
 }
 @keyframes caret{50%{opacity:0}}
 .msg .txt{white-space:pre-wrap}
-.msg .txt+.txt,.msg .txt+pre,.msg pre+.txt{margin-top:10px}
-.msg pre{
-  overflow-x:auto;padding:10px 12px;border-radius:10px;background:rgba(0,0,0,.42);
-  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.9em;line-height:1.5;
-}
-.msg pre code{background:none;padding:0;font-size:1em}
+/* Markdown in a reply (marked): the body is a stack of .blk, one for each top-level block. */
+.msg .body>.blk+.blk{margin-top:10px}
+.msg .blk :is(p,ul,ol,blockquote,table,h1,h2,h3,h4){margin:0}
+.msg .blk :is(p,ul,ol,blockquote,table)+:is(p,ul,ol,blockquote,table,h1,h2,h3,h4){margin-top:10px}
+.msg .blk :is(h1,h2,h3,h4){font-size:1.1em;font-weight:600;line-height:1.35}
+.msg .blk :is(ul,ol){padding-left:1.4em}
+.msg .blk li{margin:.2em 0}.msg .blk li::marker{color:#6E6F73}
+.msg .blk a{color:#F49D70;text-decoration:underline}
+.msg .blk blockquote{padding-left:12px;border-left:2px solid rgba(255,255,255,.18);color:#B5B6B9}
+.msg .blk table{border-collapse:collapse;display:block;overflow-x:auto}
+.msg .blk :is(th,td){padding:5px 10px;border:1px solid rgba(255,255,255,.12);text-align:left}
+.msg .blk hr{border:0;border-top:1px solid rgba(255,255,255,.12)}
+/* Code block, as in Open WebUI: a bar (language, Collapse, Run, Copy), numbered lines, run output below. */
+.code{border-radius:14px;overflow:hidden;background:#0b0d12;box-shadow:inset 0 0 0 1px rgba(255,255,255,.07)}
+.code-bar{display:flex;align-items:center;gap:2px;padding:6px 10px 6px 14px;font-size:var(--ui-sm);color:#ECECEF;background:#000}
+.code-bar .lang{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.code-bar button{padding:2px 7px;border-radius:6px;font:inherit;color:inherit;cursor:pointer}
+.code-bar button:hover{background:rgba(255,255,255,.1)}
+.code-bar button:disabled{opacity:.5;cursor:default}
+.code-bar .fold::before{content:"⌃";display:inline-block;margin-right:4px;transition:transform .15s}
+.code.collapsed .fold::before{transform:rotate(180deg)}
+.code-body{display:flex;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.88em;line-height:1.55}
+.code.collapsed .code-body,.code:not(.collapsed) .code-hidden{display:none}
+.code-hidden{padding:4px 14px 8px;font-size:var(--ui-sm);font-style:italic;color:#8B8C8E}
+.code .gutter{flex:none;padding:12px 10px 12px 14px;text-align:right;white-space:pre;color:#6E7077;user-select:none;border-right:1px solid rgba(255,255,255,.05)}
+.code pre{flex:1;min-width:0;margin:0;overflow-x:auto;padding:12px 14px}
+.code code{background:none;padding:0;font-size:1em;white-space:pre}
+.code code.hljs{display:inline;padding:0;background:none}
+.code-out{padding:8px 14px 10px;font-size:var(--ui-sm);color:#8B8C8E;border-top:1px solid rgba(255,255,255,.06)}
+.code-out:empty{display:none}
+.code-out pre{margin:3px 0 0;padding:0;overflow:visible;white-space:pre-wrap;font-size:var(--msg-fs);color:#ECECEF;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.code-out pre.bad{color:#FBBC94}.code-out img{display:block;max-width:100%;border-radius:8px;margin-top:6px}
+/* Under a finished reply: Open WebUI's row (edit, copy, read aloud, info, good, bad, continue, regenerate, fork). */
+.acts{margin-top:6px;display:flex;flex-wrap:wrap;gap:2px}
+.acts button{width:30px;height:28px;display:grid;place-items:center;border-radius:8px;color:#8B8C8E;cursor:pointer}
+.acts button:hover{background:rgba(255,255,255,.08);color:#ECECEF}
+.acts button.on,.acts button.ok{color:#F49D70}
+.acts svg{width:16px;height:16px}
+.msg:not(.latest) .acts .last{display:none}
+.msg .info{margin-top:4px;font-size:var(--ui-sm);color:#98999C}
+.msg .editbox{display:flex;flex-direction:column;gap:6px}
+.msg .editbox textarea{width:100%;min-height:5em;max-height:60vh;resize:vertical;padding:8px 10px;border-radius:10px;background:rgba(0,0,0,.42);box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);font:inherit;line-height:1.5;outline:none}
+.msg .editbox div{display:flex;gap:6px;justify-content:flex-end}
+.msg .editbox button{padding:4px 12px;border-radius:8px;font-size:var(--ui-sm);background:rgba(255,255,255,.08)}
+.msg .editbox button.go{background:#F49D70;color:#1d1d20;font-weight:500}
 .msg.err .body{color:#FBBC94}
 .dots{display:inline-flex;gap:4px;padding:6px 0}
 .dots i{width:5px;height:5px;border-radius:50%;background:#98999C;animation:dot 1s ease-in-out infinite}
@@ -349,9 +420,9 @@ button{cursor:pointer}
   .chips{flex-wrap:nowrap;gap:clamp(6px,0.85vw,10px)}
   .chip{width:auto;height:clamp(29px,3.4vh,34px);padding:0 clamp(7px,1vw,13px);font-size:clamp(9.6px,1.12vw,12.5px)}
   .right{position:static;display:flex;align-items:center;margin-left:auto;gap:0}
-  .right>*{position:relative;inset:auto}
+  .right>*,.has-tools .model-wrap{position:relative;inset:auto}
   .model{font-size:clamp(9.8px,1.12vw,12.5px)}
-  .attach{margin-left:clamp(9px,1.4vw,20px)}
+  .attach,.tool-wrap{margin-left:clamp(9px,1.4vw,20px)}
   .send{margin-left:clamp(9px,1.3vw,18px);width:clamp(32px,3.5vw,38px);height:clamp(32px,3.5vw,38px)}
   .figma{left:12px;right:12px;top:12px}
   .proof{gap:clamp(15px,2.5vh,30px)}
@@ -399,9 +470,12 @@ button{cursor:pointer}
   .chips{flex-wrap:wrap;gap:6px}
   .chip{width:auto;height:32px;padding:0 11px;font-size:11.5px}
   .right{position:static;display:flex;align-items:center;justify-content:flex-start}
-  .right>*{position:relative;inset:auto}
+  .right>*,.has-tools .model-wrap{position:relative;inset:auto}
   .model{font-size:12.5px;max-width:52vw}
-  .attach{margin-left:auto}
+  .attach,.tool-wrap{margin-left:auto}
+  .has-tools .attach{margin-left:14px}
+  .tool-wrap{position:static}
+  #tools-menu{left:0;right:0;width:auto}
   .send{margin-left:14px;width:40px;height:40px}
   .menu{left:0;right:auto}
   .figma{left:10px;right:10px;top:10px}
@@ -457,7 +531,6 @@ button{cursor:pointer}
     src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260826_124724_bc041163-d651-425f-aea3-2acc1efc2c96.mp4"></video>
 
   <div class="frame">
-    <input type="checkbox" id="menu" hidden>
 
     <header class="nav">
       <a class="brand" href="#" id="brand" aria-label="Fastshot home">
@@ -468,27 +541,7 @@ button{cursor:pointer}
         </svg>
         <span class="word">Fastshot</span>
       </a>
-      <nav class="links" aria-label="Primary">
-        <a href="#">Features</a>
-        <a href="#">Examples</a>
-        <a href="documents.html">Docs</a>
-      </nav>
-      <a class="cta" href="#" data-start><span>Get Started</span></a>
-      <label class="burger" for="menu" aria-label="Menu">
-        <svg viewBox="0 0 17 12" aria-hidden="true"><rect width="17" height="2" rx="1"/><rect y="10" width="17" height="2" rx="1"/></svg>
-      </label>
     </header>
-
-    <div class="sheet">
-      <div class="sheet-inner">
-        <div class="panel">
-          <a href="#">Features</a>
-          <a href="#">Examples</a>
-          <a href="documents.html">Docs</a>
-          <a class="cta" href="#" data-start><span>Get Started</span></a>
-        </div>
-      </div>
-    </div>
 
     <main class="hero">
       <h1 class="h1">Describe an app. We'll build it.</h1>
@@ -501,27 +554,7 @@ button{cursor:pointer}
         <textarea class="ph" id="prompt" rows="1" aria-label="Describe what you want to build"
           placeholder="Build a fintech tracking app with bank level privacy and..."></textarea>
 
-        <div class="figma" id="figma" hidden>
-          <input id="figma-url" type="url" placeholder="Paste a Figma link" aria-label="Figma link">
-          <button type="button" id="figma-add">Attach</button>
-        </div>
-
         <div class="tools">
-          <div class="chips">
-            <button type="button" class="chip" id="chip-screens" style="--cw:107;--pl:12;--ig:3.7;--iw:15.06">
-              <svg viewBox="0 0 16 13" aria-hidden="true"><path d="M2.2 0h8.6A2.2 2.2 0 0 1 13 2.2v.3H5.6a3.1 3.1 0 0 0-3.1 3.1V10h-.3A2.2 2.2 0 0 1 0 7.8V2.2A2.2 2.2 0 0 1 2.2 0Z"/><rect x="3.6" y="3.6" width="12.4" height="9.4" rx="2.2"/></svg>
-              <span>Attach Screens</span>
-            </button>
-            <button type="button" class="chip" id="chip-figma" style="--cw:108;--pl:16;--ig:3.9;--iw:11.8">
-              <svg viewBox="-3 0 18 18" aria-hidden="true"><path d="M3 0h3v6H3a3 3 0 0 1 0-6Z"/><path d="M6 0h3a3 3 0 0 1 0 6H6Z"/><path d="M3 6h3v6H3a3 3 0 0 1 0-6Z"/><circle cx="9" cy="9" r="3"/><path d="M3 12h3v3a3 3 0 1 1-3-3Z"/></svg>
-              <span>Attach a Figma</span>
-            </button>
-            <button type="button" class="chip" id="chip-theme" style="--cw:107;--pl:15.8;--ig:2.9;--iw:12.13">
-              <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 0c.5 3.2 2.8 5.5 6 6-3.2.5-5.5 2.8-6 6-.5-3.2-2.8-5.5-6-6 3.2-.5 5.5-2.8 6-6Z"/></svg>
-              <span>Today's Theme</span>
-            </button>
-          </div>
-
           <div class="right">
             <div class="model-wrap">
               <button type="button" class="model" id="model-btn" aria-haspopup="listbox" aria-expanded="false">
@@ -529,6 +562,12 @@ button{cursor:pointer}
                 <svg viewBox="0 0 8 5" aria-hidden="true"><path d="M1 0l3 3 3-3 1 1-4 4-4-4Z"/></svg>
               </button>
               <div class="menu" id="model-menu" role="listbox" aria-label="Model" hidden></div>
+            </div>
+            <div class="tool-wrap" id="tool-wrap" hidden>
+              <button type="button" class="tbtn" id="tools-btn" aria-haspopup="true" aria-expanded="false" aria-controls="tools-menu" aria-label="Tools" title="Tools">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+              </button>
+              <div class="menu" id="tools-menu" role="group" aria-label="Tools" hidden></div>
             </div>
             <button type="button" class="attach" id="attach" aria-label="Attach files">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
@@ -549,13 +588,15 @@ button{cursor:pointer}
       <p class="by">Built by engineers who loves building</p>
       <div class="logos">
         <svg viewBox="0 0 97 26" style="width:calc(96.84*var(--u))" role="img" aria-label="Ahana"><text x="0" y="21" textLength="97" lengthAdjust="spacingAndGlyphs">ahana</text></svg>
-        <svg viewBox="0 0 67 26" style="width:calc(67.29*var(--u))" role="img" aria-label="Cisco"><text x="0" y="21" textLength="67" lengthAdjust="spacingAndGlyphs">cisco</text></svg>
-        <svg viewBox="0 0 89 26" style="width:calc(88.68*var(--u))" role="img" aria-label="Ollama"><text x="0" y="21" textLength="89" lengthAdjust="spacingAndGlyphs">ollama</text></svg>
       </div>
     </footer>
   </div>
 </div>
 
+<link rel="stylesheet" href="/vendor/github-dark.min.css">
+<script src="/vendor/marked.min.js"></script>
+<script src="/vendor/highlight.min.js"></script>
+<script src="/codeexec.js"></script>
 <script>
 (() => {
   const root = document.documentElement;
@@ -570,16 +611,19 @@ button{cursor:pointer}
   /* Set window.FASTSHOT_API before this script to point at a backend on another origin. */
   const API = (window.FASTSHOT_API || '').replace(/\/$/, '');
   const MODEL_KEY = 'fastshot.model';
-  const MAX_DOC_BYTES = 20 * 1024 * 1024;
+  const MAX_DOC_BYTES = 50 * 1024 * 1024; /* workspaces.max_upload_mb on the server */
   const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
   const el = {
     thread: $('thread'), prompt: $('prompt'), attachments: $('attachments'),
     modelBtn: $('model-btn'), modelLabel: $('model-label'), menu: $('model-menu'),
-    send: $('send'), figma: $('figma'), figmaUrl: $('figma-url'),
+    toolsBtn: $('tools-btn'), toolsMenu: $('tools-menu'),
+    send: $('send'),
     fileAny: $('file-any'), fileImg: $('file-img'),
   };
-  const state = { models: [], model: null, offline: false, messages: [], attachments: [], busy: false, abort: null };
+  const state = { models: [], model: null, offline: false, messages: [], chatId: null, attachments: [], busy: false, abort: null,
+    tools: [], toolIds: [], toolsFor: undefined /* the model the ticks were last set from */,
+    workspaces: [], workspace: null, databases: [], database: null /* Knowledge / Database picked in the model menu */ };
 
   const store = {
     get() { try { return localStorage.getItem(MODEL_KEY); } catch { return null; } },
@@ -594,7 +638,9 @@ button{cursor:pointer}
   const current = () => state.models.find((m) => m.id === state.model) || null;
 
   /* ── Models ── */
+  const getJson = (path) => fetch(API + path).then((r) => (r.ok ? r.json() : null)).catch(() => null);
   async function loadModels() {
+    const extras = Promise.all([getJson('/api/workspaces'), getJson('/api/sql/connections'), getJson('/api/skills')]);
     try {
       const res = await fetch(API + '/api/models');
       if (!res.ok) throw new Error(String(res.status));
@@ -609,7 +655,41 @@ button{cursor:pointer}
       state.model = null;
       state.offline = true;
     }
+    const [ws, db, skills] = await extras;
+    state.workspaces = ws ? ws.workspaces : [];
+    state.databases = db && skills && skills.sql ? db.connections : []; /* hidden when an admin turned database queries off */
+    if (!state.workspaces.some((w) => w.id === state.workspace)) state.workspace = null;
+    if (!state.databases.some((d) => d.id === state.database)) state.database = null;
     renderModels();
+    renderAttachments();
+  }
+  function option(name, sub, selected, disabled, pick) {
+    const opt = node('button', 'opt');
+    opt.type = 'button';
+    opt.setAttribute('role', 'option');
+    opt.setAttribute('aria-selected', String(selected));
+    opt.disabled = disabled;
+    const text = node('span', 'opt-text');
+    text.append(node('span', 'opt-name', name), node('span', 'opt-sub', sub));
+    text.firstChild.style.display = text.lastChild.style.display = 'block';
+    opt.append(text, node('span', 'opt-dot'));
+    opt.addEventListener('click', () => {
+      pick();
+      renderModels();
+      renderAttachments();
+      toggleMenu(false);
+      el.prompt.focus();
+    });
+    el.menu.append(opt);
+  }
+  /* After the models: the Knowledge (workspace) and Database the replies are based on, or none. */
+  function section(title, items, key, name, sub, none) {
+    if (!items.length) return;
+    el.menu.append(node('p', 'menu-note', title));
+    for (const it of [null, ...items]) {
+      option(it ? name(it) : none, it ? sub(it) : 'Answer without it', (it ? it.id : null) === state[key], false,
+        () => { state[key] = it ? it.id : null; });
+    }
   }
 
   function renderModels() {
@@ -621,35 +701,73 @@ button{cursor:pointer}
       return;
     }
     for (const m of state.models) {
-      const opt = node('button', 'opt');
-      opt.type = 'button';
-      opt.setAttribute('role', 'option');
-      opt.setAttribute('aria-selected', String(m.id === state.model));
-      opt.disabled = !m.available;
-      const text = node('span', 'opt-text');
       const sub = m.available
         ? [m.description, m.parameter_size, m.vision ? 'vision' : ''].filter(Boolean).join(' · ')
         : m.id === 'auto' ? 'None of the routed models is pulled yet'
         : m.provider === 'opencode' ? 'OpenCode is not installed, or no longer offers this model'
         : 'Not pulled — ollama pull ' + m.model;
-      text.append(node('span', 'opt-name', m.label), node('span', 'opt-sub', sub || m.model));
-      text.firstChild.style.display = text.lastChild.style.display = 'block';
-      opt.append(text, node('span', 'opt-dot'));
-      opt.addEventListener('click', () => {
-        state.model = m.id;
-        store.set(m.id);
-        renderModels();
-        toggleMenu(false);
-        el.prompt.focus();
-      });
-      el.menu.append(opt);
+      option(m.label, sub || m.model, m.id === state.model, !m.available, () => { state.model = m.id; store.set(m.id); });
     }
     if (!state.models.some((m) => m.available)) {
       const note = node('p', 'menu-note');
       note.append('No models are pulled yet. Start Ollama, then run ', node('code', '', 'ollama pull llama3.2:3b'), '.');
       el.menu.append(note);
     }
+    section('Knowledge', state.workspaces, 'workspace', (w) => w.name, (w) => w.documents + (w.documents === 1 ? ' document' : ' documents'), 'No knowledge');
+    section('Database', state.databases, 'database', (d) => d.id, (d) => [d.label, d.database].filter(Boolean).join(' · '), 'No database');
+    renderTools();
   }
+
+  /* ── Tools (Open WebUI's Tools menu): ticks start as the picked model's default tools ── */
+  async function loadTools() {
+    try {
+      const res = await fetch(API + '/api/tools');
+      if (!res.ok) throw new Error(String(res.status));
+      state.tools = await res.json();
+    } catch {
+      state.tools = [];
+    }
+    renderTools();
+  }
+  function renderTools() {
+    if (state.toolsFor !== state.model) {
+      state.toolsFor = state.model;
+      state.toolIds = (current()?.tool_ids || []).slice();
+    }
+    root.classList.toggle('has-tools', state.tools.length > 0);
+    $('tool-wrap').hidden = !state.tools.length;
+    markTools();
+    el.toolsMenu.replaceChildren(node('p', 'menu-note', current()?.provider === 'opencode'
+      ? 'OpenCode models do not use tools: pick a local model.' : 'Tools the model may use in this chat'));
+    for (const t of state.tools) {
+      const opt = node('label', 'opt');
+      const box = node('input');
+      box.type = 'checkbox';
+      box.checked = state.toolIds.includes(t.id);
+      box.addEventListener('change', () => {
+        state.toolIds = box.checked ? [...state.toolIds, t.id] : state.toolIds.filter((id) => id !== t.id);
+        markTools();
+      });
+      const text = node('span', 'opt-text');
+      text.append(node('span', 'opt-name', t.name), node('span', 'opt-sub', t.description || t.id));
+      text.firstChild.style.display = text.lastChild.style.display = 'block';
+      opt.append(box, text);
+      el.toolsMenu.append(opt);
+    }
+  }
+  /* Ticked tools that exist: a model's default may name a tool that is gone or off. */
+  const ticked = () => state.tools.filter((t) => state.toolIds.includes(t.id));
+  function markTools() {
+    const on = ticked();
+    el.toolsBtn.classList.toggle('on', on.length > 0);
+    el.toolsBtn.title = on.length ? 'Tools: ' + on.map((t) => t.name).join(', ') : 'Tools';
+  }
+  function toggleTools(open) {
+    el.toolsMenu.hidden = !open;
+    el.toolsBtn.setAttribute('aria-expanded', String(open));
+    if (open) loadTools();
+  }
+  el.toolsBtn.addEventListener('click', () => toggleTools(el.toolsMenu.hidden));
 
   function toggleMenu(open) {
     el.menu.hidden = !open;
@@ -659,17 +777,29 @@ button{cursor:pointer}
   el.modelBtn.addEventListener('click', () => toggleMenu(el.menu.hidden));
   document.addEventListener('click', (e) => {
     if (!e.target.closest('.model-wrap')) toggleMenu(false);
-    if (!e.target.closest('#figma, #chip-figma')) el.figma.hidden = true;
+    if (!e.target.closest('.tool-wrap')) toggleTools(false);
   });
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
     toggleMenu(false);
-    el.figma.hidden = true;
+    toggleTools(false);
   });
 
   /* ── Attachments ── */
   function renderAttachments() {
     el.attachments.querySelectorAll('.pill:not(.warn)').forEach((p) => p.remove());
+    const ws = state.workspaces.find((w) => w.id === state.workspace);
+    for (const [key, what, name] of [['workspace', 'Knowledge', ws && ws.name], ['database', 'Database', state.database]]) {
+      if (!state[key]) continue;
+      const pill = node('span', 'pill');
+      pill.title = what + ': replies are based on ' + name;
+      const remove = node('button', '', '×');
+      remove.type = 'button';
+      remove.setAttribute('aria-label', 'Stop using ' + name);
+      remove.addEventListener('click', () => { state[key] = null; renderAttachments(); renderModels(); });
+      pill.append(node('span', '', what + ': ' + name), remove);
+      el.attachments.append(pill);
+    }
     state.attachments.forEach((a, i) => {
       const pill = node('span', a.pending ? 'pill pending' : 'pill');
       pill.title = a.name;
@@ -724,8 +854,10 @@ button{cursor:pointer}
         item.data = (await readDataUrl(file)).split(',')[1];
       } else {
         const doc = await extract(file);
-        item.content = doc.content;
-        if (doc.truncated) problems.push(name + ' is long: only the first 200,000 characters are attached');
+        item.id = doc.id; /* the file stays on the server: messages carry its id */
+        item.images = doc.images; /* a scanned PDF: its pages as pictures */
+        if (doc.note) problems.push(doc.note);
+        if (doc.truncated) problems.push(name + ' is very long: only its first part is kept');
       }
       item.pending = false;
     } catch (err) {
@@ -741,7 +873,7 @@ button{cursor:pointer}
     if (problems.length === 1) flash(problems[0]);
     else if (problems.length) flash(problems.length + ' files had problems — hover for details', problems.join('\n'));
     const cur = current();
-    if (cur && cur.vision === false && state.attachments.some((a) => a.kind === 'image')) {
+    if (cur && cur.vision === false && state.attachments.some((a) => a.kind === 'image' || a.images)) {
       flash(cur.label + " can't read images — pick a vision model");
     }
     renderAttachments();
@@ -750,38 +882,9 @@ button{cursor:pointer}
     input.addEventListener('change', () => { addFiles([...input.files]); input.value = ''; });
   }
   $('attach').addEventListener('click', () => el.fileAny.click());
-  $('chip-screens').addEventListener('click', () => el.fileImg.click());
   el.prompt.addEventListener('paste', (e) => {
     const files = [...(e.clipboardData?.files || [])];
     if (files.length) { e.preventDefault(); addFiles(files); }
-  });
-
-  $('chip-figma').addEventListener('click', () => {
-    el.figma.hidden = !el.figma.hidden;
-    if (!el.figma.hidden) el.figmaUrl.focus();
-  });
-  function addFigma() {
-    const url = el.figmaUrl.value.trim();
-    if (!/^https:\/\/([\w-]+\.)?figma\.com\//.test(url)) { flash('That is not a Figma link'); return; }
-    state.attachments.push({ kind: 'file', name: 'Figma link', content: 'Figma design reference: ' + url });
-    el.figmaUrl.value = '';
-    el.figma.hidden = true;
-    renderAttachments();
-    el.prompt.focus();
-  }
-  $('figma-add').addEventListener('click', addFigma);
-  el.figmaUrl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addFigma(); } });
-
-  $('chip-theme').addEventListener('click', async () => {
-    try {
-      const res = await fetch(API + '/api/theme');
-      if (!res.ok) throw new Error(String(res.status));
-      el.prompt.value = (await res.json()).prompt;
-      grow();
-      el.prompt.focus();
-    } catch {
-      flash("Could not load today's theme");
-    }
   });
 
   /* ── Composer ── */
@@ -795,11 +898,6 @@ button{cursor:pointer}
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); }
   });
   el.send.addEventListener('click', (e) => { e.preventDefault(); send(); });
-  document.querySelectorAll('[data-start]').forEach((a) => a.addEventListener('click', (e) => {
-    e.preventDefault();
-    $('menu').checked = false;
-    el.prompt.focus();
-  }));
   $('brand').addEventListener('click', (e) => { e.preventDefault(); reset(); });
 
   function setBusy(busy) {
@@ -807,10 +905,13 @@ button{cursor:pointer}
     root.classList.toggle('busy', busy);
     el.send.setAttribute('aria-label', busy ? 'Stop' : 'Build it');
   }
-  function reset() {
+  function reset(keepUrl) {
     if (state.abort) state.abort.abort();
     state.messages = [];
+    state.chatId = null;
+    if (!keepUrl && new URLSearchParams(location.search).has('c')) window.history.replaceState(null, '', '/');
     state.attachments = [];
+    state.workspace = state.database = null;
     el.thread.replaceChildren();
     renderAttachments();
     root.classList.remove('chat');
@@ -822,16 +923,189 @@ button{cursor:pointer}
   const inline = (s) => escapeHtml(s)
     .replace(/`([^`\n]+)`/g, '<code>$1</code>')
     .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
-  /* Minimal, escape-first Markdown: fenced code, inline code and bold. */
-  function render(markdown) {
-    return markdown.split('```').map((part, i) => {
-      if (i % 2) {
-        const nl = part.indexOf('\n');
-        return '<pre><code>' + escapeHtml((nl >= 0 ? part.slice(nl + 1) : part).replace(/\n$/, '')) + '</code></pre>';
-      }
-      const text = part.replace(/^\n+|\n+$/g, '');
-      return text ? '<div class="txt">' + inline(text) + '</div>' : '';
-    }).join('');
+  /* Markdown by marked, made safe: raw HTML in a reply is shown as text, links must be http(s)/mailto,
+     pictures are never fetched. Code blocks get Open WebUI's bar (Collapse, Run, Copy), numbered
+     lines and highlight.js colours. Python blocks get a Run button (codeexec.js) when an admin
+     allows it: Admin Panel -> Code. */
+  let codeCfg = { enabled: false, timeout: 60 };
+  fetch('/api/code').then((r) => r.ok && r.json()).then((c) => { if (c) codeCfg = c; }).catch(() => {});
+  const PY = ['python', 'py'];
+  function codeBlock(code, lang, finished) {
+    lang = (lang || '').trim().split(/\s/)[0].toLowerCase();
+    const html = lang && hljs.getLanguage(lang) ? hljs.highlight(code, { language: lang, ignoreIllegals: true }).value : escapeHtml(code);
+    const lines = code.split('\n').length;
+    const run = finished && codeCfg.enabled && PY.includes(lang) ? '<button type="button" class="run">Run</button>' : '';
+    return '<div class="code"><div class="code-bar"><span class="lang">' + escapeHtml(lang || 'text') + '</span>'
+      + '<button type="button" class="fold">Collapse</button>' + run + '<button type="button" class="copy">Copy</button></div>'
+      + '<div class="code-body"><div class="gutter">' + Array.from({ length: lines }, (_, i) => i + 1).join('\n') + '</div>'
+      + '<pre><code class="hljs">' + html + '</code></pre></div>'
+      + '<div class="code-hidden">' + lines + ' hidden lines</div><div class="code-out"></div></div>';
+  }
+  const md = new marked.Marked({ gfm: true, breaks: true });
+  md.use({ renderer: {
+    html: (h) => escapeHtml(h),
+    image: (href, title, text) => escapeHtml(text || ''),
+    link(href, title, text) {
+      /* A file a tool made (/api/tools/files/<name>) downloads from this origin; other relative links stay text. */
+      if (/^\/api\/tools\/files\/[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(href)) return '<a href="' + escapeHtml(href) + '" download>' + text + '</a>';
+      return /^(https?:|mailto:)/i.test(href) ? '<a href="' + escapeHtml(href) + '" target="_blank" rel="noopener noreferrer">' + text + '</a>' : text;
+    },
+  } });
+  /* One HTML string for each top-level block. The last one is still being written unless `final`. */
+  function blocks(markdown, final) {
+    const tokens = md.lexer(markdown).filter((t) => t.type !== 'space');
+    return tokens.map((t, i) => t.type === 'code'
+      ? codeBlock(t.text, t.lang, final || i < tokens.length - 1)
+      : md.parser([t]));
+  }
+  /* Only blocks whose HTML changed are rebuilt: a finished block keeps its collapse state and Run output
+     while the next one is written, and a button is never replaced under the reader's pointer. */
+  function paintBody(body, markdown, final) {
+    const next = blocks(markdown, final);
+    if (body.querySelector('.dots')) body.replaceChildren();
+    next.forEach((html, i) => {
+      let box = body.children[i];
+      if (box && box.dataset.src === html) return;
+      const fresh = node('div', 'blk');
+      fresh.innerHTML = html;
+      fresh.dataset.src = html;
+      box ? box.replaceWith(fresh) : body.append(fresh);
+    });
+    while (body.children.length > next.length) body.lastElementChild.remove();
+  }
+  /* navigator.clipboard only exists on https and localhost; this app is often opened by IP address. */
+  async function copyText(text) {
+    try { await navigator.clipboard.writeText(text); return; } catch { /* fall through */ }
+    const t = Object.assign(document.createElement('textarea'), { value: text });
+    t.style.cssText = 'position:fixed;opacity:0';
+    document.body.append(t);
+    t.select();
+    document.execCommand('copy');
+    t.remove();
+  }
+  const said = (btn, text) => { const was = btn.dataset.was || btn.textContent; btn.dataset.was = was; btn.textContent = text; setTimeout(() => { btn.textContent = was; }, 1500); };
+  el.thread.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.code-bar button, .acts button');
+    if (!btn) return;
+    if (btn.dataset.do) return act(btn.dataset.do, btn, btn.closest('.msg'));
+    const block = btn.closest('.code');
+    if (btn.classList.contains('fold')) {
+      btn.textContent = block.classList.toggle('collapsed') ? 'Expand' : 'Collapse';
+    } else if (btn.classList.contains('copy')) {
+      await copyText(block.querySelector('code').textContent);
+      said(btn, 'Copied');
+    } else if (btn.classList.contains('run')) {
+      const out = block.querySelector('.code-out');
+      btn.disabled = true;
+      btn.textContent = 'Running…';
+      const r = await window.runPython(block.querySelector('code').textContent, codeCfg.timeout);
+      btn.disabled = false;
+      btn.textContent = 'Run';
+      out.replaceChildren('STDOUT/STDERR', node('pre', r.stderr ? 'bad' : '', (r.stdout + r.stderr).trim() || '(no output)'),
+        ...r.images.map((src) => Object.assign(node('img'), { src })));
+    }
+  });
+  /* The row of buttons under a finished reply, as in Open WebUI. Each works on the reply's message object
+     (`msg`, the same one in state.messages and in the saved chat), so an edit or a rating is saved with the chat. */
+  const ICON = {
+    edit: ['M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125'],
+    copy: ['M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184'],
+    speak: ['M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z'],
+    info: ['M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z'],
+    up: ['M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3'],
+    down: ['M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17'],
+    more: ['M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z', 'M15.91 11.672a.375.375 0 0 1 0 .656l-5.603 3.113a.375.375 0 0 1-.557-.328V8.887c0-.286.307-.466.557-.327l5.603 3.112Z'],
+    redo: ['M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99'],
+    fork: ['M4 12H9', 'M9 12C12.5 12 12.5 7 16 7H20', 'M17 4L20 7L17 10', 'M9 12C12.5 12 12.5 17 16 17H20', 'M17 14L20 17L17 20'],
+  };
+  const TOOLS = [['edit', 'Edit'], ['copy', 'Copy'], ['speak', 'Read aloud'], ['info', 'Generation info'], ['up', 'Good response'],
+    ['down', 'Bad response'], ['more', 'Continue response'], ['redo', 'Regenerate'], ['fork', 'Fork chat']];
+  const LAST_ONLY = ['more', 'redo']; /* only the newest reply can be continued or written again */
+  const CONTINUE = 'Continue exactly where you stopped. Do not repeat anything you already wrote.';
+  const turns = new WeakMap(); /* reply bubble -> { msg, history } */
+  function addActions(bubble, msg, history) {
+    turns.set(bubble, { msg, history });
+    document.querySelectorAll('.msg.latest').forEach((b) => b.classList.remove('latest'));
+    bubble.classList.add('latest');
+    const row = node('div', 'acts');
+    for (const [name, label] of TOOLS) {
+      if (name === 'speak' && !('speechSynthesis' in window)) continue;
+      const b = node('button', LAST_ONLY.includes(name) ? 'last' : '');
+      b.type = 'button';
+      b.title = label;
+      b.setAttribute('aria-label', label);
+      b.dataset.do = name;
+      b.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+        + ICON[name].map((d) => '<path d="' + d + '"/>').join('') + '</svg>';
+      if ((name === 'up' && msg.rating === 1) || (name === 'down' && msg.rating === -1)) b.classList.add('on');
+      row.append(b);
+    }
+    bubble.append(row);
+  }
+  async function act(what, btn, bubble) {
+    const { msg, history } = turns.get(bubble);
+    const body = bubble.querySelector('.body');
+    const last = history[history.length - 1] === msg;
+    if (['edit', 'more', 'redo'].includes(what) && state.busy) { flash('Wait until the reply is finished'); return; }
+    if (what === 'copy') {
+      await copyText(msg.content);
+      btn.classList.add('ok');
+      setTimeout(() => btn.classList.remove('ok'), 1500);
+    } else if (what === 'speak') {
+      const was = btn.classList.contains('on');
+      speechSynthesis.cancel();
+      document.querySelectorAll('.acts button.on[data-do=speak]').forEach((b) => b.classList.remove('on'));
+      if (was) return;
+      const plain = body.cloneNode(true); /* the code is not read out */
+      plain.querySelectorAll('.code').forEach((c) => c.remove());
+      const say = new SpeechSynthesisUtterance(plain.textContent);
+      say.onend = say.onerror = () => btn.classList.remove('on');
+      btn.classList.add('on');
+      speechSynthesis.speak(say);
+    } else if (what === 'info') {
+      const old = bubble.querySelector('.info');
+      if (old) { old.remove(); return; }
+      const i = msg.info || {};
+      const s = i.stats || {};
+      bubble.append(node('div', 'info', [bubble.querySelector('.meta span').textContent,
+        i.source && 'Routed by ' + i.source + (i.route ? ' to "' + i.route + '"' : '') + (i.confidence != null ? ' (confidence ' + i.confidence + ')' : ''),
+        s.tokens_per_second && s.tokens_per_second + ' tokens/s', s.total_seconds && s.total_seconds + ' s'].filter(Boolean).join(' · ')));
+    } else if (what === 'up' || what === 'down') {
+      const v = what === 'up' ? 1 : -1;
+      msg.rating = msg.rating === v ? 0 : v;
+      bubble.querySelectorAll('.acts [data-do=up], .acts [data-do=down]').forEach((b) => b.classList.toggle('on', msg.rating === (b.dataset.do === 'up' ? 1 : -1)));
+      save(history);
+    } else if (what === 'edit') {
+      const row = bubble.querySelector('.acts');
+      const area = node('textarea');
+      area.value = msg.content;
+      const done = (keep) => {
+        if (keep && area.value.trim()) { msg.content = area.value.trim(); paintBody(body, msg.content, true); save(history); }
+        box.remove();
+        body.hidden = row.hidden = false;
+      };
+      const ok = node('button', 'go', 'Save');
+      const no = node('button', '', 'Cancel');
+      ok.onclick = () => done(true);
+      no.onclick = () => done(false);
+      const box = node('div', 'editbox');
+      box.append(area, node('div', '', ''));
+      box.lastChild.append(no, ok);
+      body.hidden = row.hidden = true;
+      body.after(box);
+      area.focus();
+    } else if (what === 'more' || what === 'redo') {
+      if (!last) return;
+      history.pop(); /* the reply leaves the history; reply() writes its successor */
+      bubble.remove();
+      await reply(history, what === 'more' ? msg.content : '');
+    } else if (what === 'fork') {
+      try {
+        const r = await fetch(API + '/api/chats', { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ messages: history.slice(0, history.indexOf(msg) + 1) }) });
+        if (!r.ok) throw new Error(String(r.status));
+        location.href = '/?c=' + encodeURIComponent((await r.json()).id);
+      } catch { flash('The chat could not be forked'); }
+    }
   }
   /* Keeps a scrolling box at its end while text is added, but only while the reader is at the
      end. Scrolling up, by any amount and by any means, lets go at once - the page must never
@@ -870,6 +1144,62 @@ button{cursor:pointer}
     return { bubble, body, stats, name };
   }
 
+  /* ── Saved chats (the sidebar lists them) ── */
+  const JSON_HEADERS = { 'Content-Type': 'application/json' };
+  async function save(msgs) {
+    if (state.messages !== msgs || !msgs.length) return; /* the reader moved to another chat meanwhile */
+    try {
+      const body = JSON.stringify({ messages: msgs });
+      if (state.chatId) {
+        const r = await fetch(API + '/api/chats/' + state.chatId, { method: 'POST', headers: JSON_HEADERS, body });
+        if (!r.ok) throw new Error(String(r.status));
+      } else {
+        const r = await fetch(API + '/api/chats', { method: 'POST', headers: JSON_HEADERS, body });
+        if (!r.ok) throw new Error(String(r.status));
+        const { id } = await r.json();
+        if (state.messages !== msgs) return;
+        state.chatId = id;
+        window.history.replaceState(null, '', '/?c=' + encodeURIComponent(id));
+      }
+      window.dispatchEvent(new Event('chats:changed'));
+    } catch { flash('This chat could not be saved'); }
+  }
+  async function openChat(id) {
+    let chat;
+    try {
+      const r = await fetch(API + '/api/chats/' + encodeURIComponent(id));
+      if (!r.ok) throw new Error(String(r.status));
+      chat = await r.json();
+    } catch {
+      window.history.replaceState(null, '', '/');
+      reset(true);
+      flash('That chat was not found');
+      return;
+    }
+    reset(true);
+    state.chatId = chat.id;
+    state.messages = chat.messages;
+    root.classList.remove('anim');
+    root.classList.add('chat');
+    for (const m of chat.messages) {
+      if (m.role === 'user') addUser(m, m.names || (m.files || []).map((f) => f.name));
+      else {
+        const known = state.models.find((x) => x.id === m.model);
+        const old = addBot(known ? known.label : 'Fastshot');
+        for (const s of m.info?.sources || []) sourcesBlock(old.body, s);
+        for (const t of m.info?.tools || []) toolBlock(old.body, t);
+        paintBody(old.body, m.content || '', true);
+        addActions(old.bubble, m, state.messages);
+      }
+    }
+    follow.go();
+  }
+  window.Chat = { open: openChat, reset: () => reset() };
+  window.addEventListener('popstate', () => {
+    const id = new URLSearchParams(location.search).get('c');
+    if (id) openChat(id); else reset(true);
+  });
+
   /* ── Chat ── */
   async function send() {
     if (state.busy) { state.abort?.abort(); return; }
@@ -881,8 +1211,9 @@ button{cursor:pointer}
     const message = {
       role: 'user',
       content,
-      images: attached.filter((a) => a.kind === 'image').map((a) => a.data),
-      files: attached.filter((a) => a.kind === 'file').map((a) => ({ name: a.name, content: a.content })),
+      images: attached.flatMap((a) => (a.kind === 'image' ? [a.data] : a.images || [])),
+      files: attached.filter((a) => a.kind === 'file' && a.id).map((a) => ({ name: a.name, id: a.id })),
+      names: attached.map((a) => a.name), /* shown again when the chat is reopened; the server ignores it */
     };
     const history = state.messages; /* reset() swaps the array, so a late reply can't leak into a new chat */
     history.push(message);
@@ -891,15 +1222,202 @@ button{cursor:pointer}
     grow();
     renderAttachments();
     toggleMenu(false);
+    toggleTools(false);
 
     root.classList.remove('anim');
     root.classList.add('chat');
     addUser(message, attached.map((a) => a.name));
+    await reply(history, '');
+  }
+
+  /* ── Charts (the create_chart skill): drawn here as SVG, no library, so it works offline ── */
+  const CHART_COLORS = ['#F49D70', '#8AB4F8', '#8FD3A8', '#C9A7F5', '#F2C66D', '#F28B9B'];
+  const svgNode = (tag, attrs, text) => {
+    const n = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    for (const [k, v] of Object.entries(attrs || {})) n.setAttribute(k, v);
+    if (text != null) n.textContent = text;
+    return n;
+  };
+  const fmt = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
+  const fmtShort = new Intl.NumberFormat('en-IN', { notation: 'compact', maximumFractionDigits: 1 });
+  /* Round tick values: 0, 250, 500 ... rather than 0, 237.4, 474.8 */
+  function ticks(min, max, count = 5) {
+    if (min === max) { max = min + 1; min = Math.min(0, min); }
+    const raw = (max - min) / count;
+    const step = [1, 2, 2.5, 5, 10].map((m) => m * 10 ** Math.floor(Math.log10(raw))).find((s) => s >= raw);
+    const out = [];
+    for (let v = Math.floor(min / step) * step; v <= max + step * 1e-9; v += step) out.push(+v.toFixed(10));
+    if (out[out.length - 1] < max) out.push(out[out.length - 1] + step);
+    return out;
+  }
+  function chartView(spec) {
+    const wrap = node('div', 'chart');
+    if (spec.title) wrap.append(node('div', 'chart-title', spec.title));
+    /* As wide as the reply has room for, so the labels keep their size on a phone. */
+    const W = Math.max(300, Math.min(640, Math.round(el.thread.clientWidth - 76)));
+    const narrow = W < 520;
+    const pieRows = spec.type === 'pie' && narrow ? spec.labels.length : 0;
+    const H = spec.type === 'pie' && narrow ? 236 + pieRows * 20 : narrow ? 250 : 300;
+    const svg = svgNode('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': spec.title || 'Chart' });
+    const series = spec.series, labels = spec.labels;
+    const color = (i) => CHART_COLORS[i % CHART_COLORS.length];
+
+    if (spec.type === 'pie') {
+      const values = series[0].values, total = values.reduce((a, b) => a + b, 0) || 1;
+      const cx = narrow ? W / 2 : 150, cy = narrow ? 112 : 150, r = narrow ? 100 : 120;
+      let angle = -Math.PI / 2;
+      values.forEach((v, i) => {
+        const a2 = angle + (v / total) * Math.PI * 2;
+        const large = a2 - angle > Math.PI ? 1 : 0;
+        const p = (a) => `${cx + r * Math.cos(a)} ${cy + r * Math.sin(a)}`;
+        const d = values.length === 1 ? `M ${cx - r} ${cy} a ${r} ${r} 0 1 0 ${2 * r} 0 a ${r} ${r} 0 1 0 ${-2 * r} 0`
+          : `M ${cx} ${cy} L ${p(angle)} A ${r} ${r} 0 ${large} 1 ${p(a2)} Z`;
+        const slice = svgNode('path', { d, fill: color(i), stroke: '#141417', 'stroke-width': 1.5 });
+        slice.append(svgNode('title', {}, `${labels[i]}: ${fmt.format(v)} (${Math.round((v / total) * 100)}%)`));
+        svg.append(slice);
+        angle = a2;
+      });
+      labels.forEach((label, i) => {
+        const y = narrow ? 240 + i * 20 : 40 + i * 20, x = narrow ? 8 : 320;
+        svg.append(svgNode('rect', { x, y: y - 10, width: 11, height: 11, rx: 2, fill: color(i) }));
+        svg.append(svgNode('text', { x: x + 18, y, class: 'c-label' },
+          `${label.length > 26 ? label.slice(0, 25) + '…' : label}  ${fmt.format(series[0].values[i])} · ${Math.round((series[0].values[i] / total) * 100)}%`));
+      });
+    } else {
+      const all = series.flatMap((s) => s.values);
+      const lo = Math.min(0, ...all), hi = Math.max(0, ...all);
+      const ys = ticks(lo, hi);
+      const left = narrow ? 44 : 58, right = 10, top = 14, bottom = labels.length > 8 || (narrow && labels.length > 4) ? 70 : 40;
+      const pw = W - left - right, ph = H - top - bottom;
+      const y = (v) => top + ph - ((v - ys[0]) / (ys[ys.length - 1] - ys[0])) * ph;
+      const band = pw / labels.length;
+      for (const t of ys) {
+        svg.append(svgNode('line', { x1: left, x2: W - right, y1: y(t), y2: y(t), class: t === 0 ? 'c-zero' : 'c-grid' }));
+        svg.append(svgNode('text', { x: left - 8, y: y(t) + 4, 'text-anchor': 'end', class: 'c-label' }, fmtShort.format(t)));
+      }
+      const every = Math.ceil(labels.length / 24); /* never more than 24 labels along the bottom */
+      labels.forEach((label, i) => {
+        if (i % every) return;
+        const x = left + band * (i + 0.5), short = label.length > 14 ? label.slice(0, 13) + '…' : label;
+        const attrs = labels.length > 8 || (narrow && labels.length > 4)
+          ? { x, y: H - bottom + 14, 'text-anchor': 'end', transform: `rotate(-35 ${x} ${H - bottom + 14})`, class: 'c-label' }
+          : { x, y: H - bottom + 18, 'text-anchor': 'middle', class: 'c-label' };
+        svg.append(svgNode('text', attrs, short));
+      });
+      if (spec.type === 'bar') {
+        const gw = band * 0.72, bw = gw / series.length;
+        series.forEach((s, si) => s.values.forEach((v, i) => {
+          const x = left + band * i + (band - gw) / 2 + bw * si, y0 = y(0), yv = y(v);
+          const bar = svgNode('rect', { x, y: Math.min(y0, yv), width: Math.max(1, bw - 2), height: Math.max(1, Math.abs(y0 - yv)), rx: 2, fill: color(si) });
+          bar.append(svgNode('title', {}, `${labels[i]} · ${s.name}: ${fmt.format(v)}`));
+          svg.append(bar);
+        }));
+      } else {
+        series.forEach((s, si) => {
+          const pts = s.values.map((v, i) => [left + band * (i + 0.5), y(v)]);
+          if (spec.type === 'area') {
+            const d = `M ${pts[0][0]} ${y(Math.max(0, ys[0]))} ` + pts.map((p) => `L ${p[0]} ${p[1]}`).join(' ') + ` L ${pts[pts.length - 1][0]} ${y(Math.max(0, ys[0]))} Z`;
+            svg.append(svgNode('path', { d, fill: color(si), opacity: 0.18 }));
+          }
+          svg.append(svgNode('polyline', { points: pts.map((p) => p.join(',')).join(' '), fill: 'none', stroke: color(si), 'stroke-width': 2.2, 'stroke-linejoin': 'round' }));
+          pts.forEach((p, i) => {
+            const dot = svgNode('circle', { cx: p[0], cy: p[1], r: labels.length > 30 ? 2 : 3.2, fill: color(si) });
+            dot.append(svgNode('title', {}, `${labels[i]} · ${s.name}: ${fmt.format(s.values[i])}`));
+            svg.append(dot);
+          });
+        });
+      }
+      if (spec.y_label) svg.append(svgNode('text', { x: 12, y: top + ph / 2, transform: `rotate(-90 12 ${top + ph / 2})`, 'text-anchor': 'middle', class: 'c-label' }, spec.y_label));
+    }
+    wrap.append(svg);
+
+    const foot = node('div', 'chart-foot');
+    if (spec.type !== 'pie' && series.length > 1) {
+      for (const [i, s] of series.entries()) {
+        const key = node('span', 'chart-key', s.name);
+        key.style.setProperty('--c', color(i));
+        foot.append(key);
+      }
+    }
+    if (spec.x_label && spec.type !== 'pie') foot.append(node('span', 'chart-axis', spec.x_label));
+    const copy = node('button', 'chart-copy', 'Copy data');
+    copy.type = 'button';
+    copy.addEventListener('click', async () => {
+      const rows = [[spec.x_label || 'Label', ...series.map((s) => s.name)].join('\t'),
+        ...labels.map((l, i) => [l, ...series.map((s) => s.values[i])].join('\t'))];
+      await copyText(rows.join('\n'));
+      said(copy, 'Copied');
+    });
+    foot.append(copy);
+    wrap.append(foot);
+    return wrap;
+  }
+
+  /* One "Used <tool>" block above a reply. Arguments and results come from the model and the tool, so they are
+     only ever set as text. A chart is drawn, a query shows its SQL and the first rows. Returns a function that
+     repaints it on progress and once the result is in. */
+  function toolBlock(body, t) {
+    const box = node('details', 'think');
+    const label = node('summary');
+    const text = node('div', 'think-text');
+    box.append(label, text);
+    body.before(box);
+    const fill = () => {
+      const done = t.result != null;
+      box.classList.toggle('done', done);
+      label.textContent = !done ? t.progress || 'Using ' + t.name + '…'
+        : 'Used ' + t.name + (t.chart && t.chart.title ? ': ' + t.chart.title
+          : t.columns ? ' · ' + t.rows + (t.rows === 1 ? ' row' : ' rows') + (t.truncated ? ' (more not read)' : '') : '');
+      text.classList.toggle('wide', !!t.chart);
+      if (t.chart) { text.replaceChildren(chartView(t.chart)); box.open = true; return; } /* the chart is part of the answer */
+      text.textContent = t.sql || 'Arguments: ' + (typeof t.arguments === 'string' ? t.arguments : JSON.stringify(t.arguments ?? {}, null, 2));
+      if (!done) return;
+      if (!t.columns || !t.columns.length) { text.append('\n\nResult:\n' + t.result); return; }
+      const table = node('table');
+      const head = node('tr');
+      for (const c of t.columns) head.append(node('th', '', c));
+      table.append(head);
+      for (const row of t.preview || []) {
+        const tr = node('tr');
+        for (const v of row) tr.append(node('td', '', v == null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v)));
+        table.append(tr);
+      }
+      text.append(table);
+      if ((t.preview || []).length < t.rows) text.append('First ' + t.preview.length + ' of ' + t.rows + ' rows shown.');
+    };
+    fill();
+    return fill;
+  }
+  /* "Sources (n)" above a reply: the passages of a workspace or of the attached files it was given. */
+  function sourcesBlock(body, s) {
+    const box = node('details', 'think done');
+    const text = node('div', 'think-text');
+    box.append(node('summary', '', s.items.length ? 'Sources (' + s.items.length + ') · ' + s.workspace : 'No passage in ' + s.workspace + ' matched'), text);
+    for (const it of s.items) {
+      /* A workspace passage opens its document in the workspace viewer, at its page; attached files have no viewer. */
+      const head = node(s.workspace_id && it.doc != null ? 'a' : 'b', '', '[' + it.n + '] ' + it.document + (it.label ? ' · ' + it.label : ''));
+      if (head.tagName === 'A') {
+        head.href = '/workspaces.html#' + encodeURIComponent(s.workspace_id) + '/doc/' + encodeURIComponent(it.doc)
+          + (it.label ? '?label=' + encodeURIComponent(it.label) : '');
+        head.target = '_blank';
+        head.rel = 'noopener';
+        head.title = 'Open ' + it.document + (it.label ? ' at ' + it.label : '');
+      }
+      text.append(head, '\n' + it.text + '\n\n');
+    }
+    body.before(box);
+  }
+
+  /* Writes one reply to the last message of `history`. `prior` is the text of an earlier reply to carry on from
+     (Continue): the model is asked to go on, and its words are added to that text. */
+  async function reply(history, prior) {
     const model = current();
     const out = addBot(model ? model.label : 'Fastshot');
     follow.go();
 
-    let answer = '';
+    let answer = prior;
+    const info = {}; /* routing, speed and tool calls, kept with the reply */
+    const fills = new Map(); /* tool call -> repaint of its block */
     let answeredBy = state.model; /* with Auto, replaced by the model the router picked */
     let thought = '';
     let think = null; /* the live "Thinking" block, created when the first reasoning arrives */
@@ -922,13 +1440,13 @@ button{cursor:pointer}
       think.label.textContent = 'Thought for ' + Math.max(1, Math.round((performance.now() - think.since) / 1000)) + 's';
     };
     /* Runs at most once per frame, however many pieces of text arrived since the last one. */
-    const paint = () => {
+    const paint = (final) => {
       frame = 0;
       if (think && !think.closed) {
         think.text.textContent = thought;
         think.follow.keep();
       }
-      if (answer) out.body.innerHTML = render(answer);
+      if (answer) paintBody(out.body, answer, final === true);
       follow.keep();
     };
     const fail = (text) => {
@@ -936,6 +1454,7 @@ button{cursor:pointer}
       out.body.textContent = text;
     };
 
+    if (prior) paint();
     setBusy(true);
     out.bubble.classList.add('live');
     state.abort = new AbortController();
@@ -943,10 +1462,12 @@ button{cursor:pointer}
       const res = await fetch(API + '/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: state.model, messages: history }),
+        body: JSON.stringify({ model: state.model, tool_ids: ticked().map((t) => t.id),
+          workspace: state.workspace || undefined, database: state.database || undefined, messages: prior ? [...history, { role: 'assistant', content: prior }, { role: 'user', content: CONTINUE }] : history }),
         signal: state.abort.signal,
       });
       if (!res.ok) {
+        if (res.status === 403) loadModels(); /* an admin turned this model off: the picker falls back */
         const detail = (await res.json().catch(() => ({}))).detail;
         throw new Error(typeof detail === 'string' ? detail : 'Request failed (' + res.status + ')');
       }
@@ -966,13 +1487,33 @@ button{cursor:pointer}
           if (event.type === 'route') {
             /* Auto picked a model for this message: show which one, and why on hover. */
             answeredBy = event.model;
-            out.name.textContent = 'Auto · ' + event.label;
+            Object.assign(info, { source: event.source, route: event.route, confidence: event.confidence });
+            out.name.textContent = (event.source === 'picked' ? '' : 'Auto · ') + event.label;
             out.name.title = 'Routed by ' + event.source
               + (event.route ? ' to "' + event.route + '"' : '')
               + (event.confidence != null ? ' (confidence ' + event.confidence + ')' : '');
             if (event.note) out.body.before(node('div', 'note', event.note));
           } else if (event.type === 'notice') {
             out.body.before(node('div', 'note', event.message));
+          } else if (event.type === 'tool_call') {
+            const t = { name: event.name, arguments: event.arguments };
+            (info.tools ||= []).push(t);
+            fills.set(t, toolBlock(out.body, t));
+            follow.keep();
+          } else if (event.type === 'tool_progress') {
+            const t = info.tools?.find((c) => c.name === event.name && c.result == null);
+            if (t) { t.progress = event.message; fills.get(t)(); }
+          } else if (event.type === 'tool_result') {
+            let t = info.tools?.find((c) => c.name === event.name && c.result == null);
+            if (!t) { t = { name: event.name }; (info.tools ||= []).push(t); fills.set(t, toolBlock(out.body, t)); }
+            const { type, ...summary } = event; /* chart, or sql/columns/preview/rows: kept so a reopened chat shows them */
+            Object.assign(t, summary, { result: String(event.result ?? '') });
+            delete t.progress;
+            fills.get(t)();
+            follow.keep();
+          } else if (event.type === 'sources') {
+            (info.sources ||= []).push(event);
+            sourcesBlock(out.body, event);
           } else if (event.type === 'thinking') {
             if (!think) think = startThinking();
             thought += event.content;
@@ -983,6 +1524,7 @@ button{cursor:pointer}
             if (!frame) frame = requestAnimationFrame(paint);
           } else if (event.type === 'done') {
             const s = event.stats || {};
+            info.stats = s;
             out.stats.textContent = [s.tokens_per_second && s.tokens_per_second + ' tok/s', s.total_seconds && s.total_seconds + 's']
               .filter(Boolean).join(' · ');
           } else if (event.type === 'error') {
@@ -1003,8 +1545,11 @@ button{cursor:pointer}
       endThinking();
       out.bubble.classList.remove('live');
       if (answer) {
-        paint();
-        history.push({ role: 'assistant', content: answer, model: answeredBy });
+        paint(true);
+        const msg = { role: 'assistant', content: answer, model: answeredBy, info };
+        history.push(msg);
+        addActions(out.bubble, msg, history);
+        await save(history);
       } else {
         history.pop(); /* nothing came back, so the turn does not join the history */
       }
@@ -1014,7 +1559,9 @@ button{cursor:pointer}
     }
   }
 
-  loadModels();
+  /* A saved chat in the address (?c=...) opens once the model names are known, for the labels. */
+  loadTools();
+  loadModels().then(() => { const id = new URLSearchParams(location.search).get('c'); if (id) openChat(id); });
 })();
 </script>
 </body>

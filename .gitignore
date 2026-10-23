@@ -7,3 +7,5 @@ __pycache__/
 config.local/
 .opencode/
 backend/data/
+frontend/pyodide/
+/models/

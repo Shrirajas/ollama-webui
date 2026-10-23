@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<script src="/auth.js"></script>
+<title>Fastshot — Admin Models</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,100..900&display=block" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+[hidden]{display:none!important}
+:root{color-scheme:dark;--line:rgba(214,228,255,.10);--soft:rgba(255,255,255,.06);--text:#ECECEF;--muted:#98999C;--dim:#77787B;--accent:#F49D70;--err:#FBBC94;--ok:#8FD3A8}
+body{min-height:100vh;background:#0a0d12;color:var(--text);font:14px/1.5 Inter,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+button,input,textarea{font:inherit;color:inherit}
+button{cursor:pointer;background:none;border:0}
+a{color:inherit;text-decoration:none}
+:focus-visible{outline:2px solid #F8B285;outline-offset:2px;border-radius:6px}
+.wrap{max-width:1100px;margin:0 auto;padding:18px 20px 64px}
+/* top tabs, as in Open WebUI's admin layout */
+.tabs{display:flex;gap:14px;padding:6px 2px 10px;font-size:14px}
+.tabs a{color:var(--dim);padding:2px 2px}
+.tabs a[aria-current=page]{color:var(--text)}
+.head{display:flex;align-items:center;gap:8px;margin:10px 2px 14px;font-size:18px}
+.head h1{font-size:inherit;font-weight:500}
+.count{font-size:12px;color:var(--muted);background:var(--soft);border-radius:999px;padding:1px 9px}
+.search{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:10px;background:var(--soft);margin-bottom:8px}
+.search svg{width:14px;height:14px;color:var(--dim);flex:none}
+.search input{flex:1;min-width:0;background:none;border:0;outline:0}
+.btn{padding:6px 12px;border-radius:9px;background:rgba(255,255,255,.08);border:1px solid var(--line);font-size:13px}
+.btn:hover{background:rgba(255,255,255,.13)}
+.btn.go{background:linear-gradient(163deg,#FBBC94,#F49D70 46%,#E88654);color:#1d1d20;font-weight:500;border:0}
+.btn:disabled{opacity:.55;cursor:default}
+.hint{font-size:12px;color:var(--dim)}
+/* model list, as in Open WebUI's Admin -> Models */
+#rows{list-style:none}
+#rows li{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:12px}
+#rows li:hover{background:rgba(255,255,255,.025)}
+#rows a{flex:1;min-width:0;display:grid}
+#rows .sub{font-size:12px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.off a{opacity:.5}
+.tag{font-size:11px;padding:0 7px;border-radius:999px;background:var(--soft);color:var(--muted);margin-left:6px}
+.none{padding:26px 10px;color:var(--dim);text-align:center}
+/* switch: Open WebUI's 28x16 pill */
+.sw{position:relative;width:28px;height:16px;border-radius:999px;background:#3a3d44;flex:none;transition:background .15s}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:#8b8d93;transition:left .15s,background .15s}
+.sw[aria-checked=true]{background:var(--text)}
+.sw[aria-checked=true]::after{left:14px;background:#0a0d12}
+/* editor */
+.back{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:13px;margin:6px 2px 4px}
+.back:hover{color:var(--text)}
+.title{display:flex;align-items:center;gap:10px;margin:6px 2px 16px;max-width:900px}
+.title h1{font-size:18px;font-weight:500}
+.title .sub{color:var(--dim);font-size:13px;flex:1}
+.title label{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+form,section.server{display:grid;gap:14px;max-width:900px}
+.lbl{font-size:12.5px;color:var(--muted)}
+.lbl b{font-weight:500;color:var(--text);font-size:13px;display:block}
+textarea,input[type=number]{padding:8px 10px;border-radius:9px;background:#1f232b;border:1px solid var(--line);color:var(--text);width:100%}
+textarea{min-height:140px;resize:vertical}
+.fold{display:flex;align-items:center;gap:10px;width:100%;padding:8px 2px;text-align:left;border-top:1px solid var(--soft);font-size:13px}
+.fold span:nth-child(2){flex:1;color:var(--dim)}
+.fold svg{width:12px;height:12px;color:var(--dim);transition:transform .15s}
+.fold[aria-expanded=true] svg{transform:rotate(90deg)}
+.params{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:6px 22px;padding-left:4px}
+.param{padding:4px 0}
+.prow{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12.5px;color:var(--muted)}
+.prow button{padding:2px 8px;border-radius:6px;font-size:12px;color:var(--text)}
+.prow button:hover{background:var(--soft)}
+.prow button.dflt{color:var(--dim)}
+.param .hint{margin-top:1px}
+.range{display:flex;gap:8px;align-items:center;margin-top:4px}
+.range input[type=range]{flex:1;accent-color:var(--accent)}
+.range input[type=number]{width:84px;padding:4px 6px;text-align:center}
+.param textarea{min-height:60px;margin-top:4px}
+.actions{display:flex;gap:8px;align-items:center}
+fieldset{border:0;min-width:0}
+#toolrows{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:4px 22px;margin-top:6px}
+#toolrows label{display:flex;align-items:baseline;gap:8px;padding:3px 0;color:var(--text);font-size:13px}
+#toolrows input{accent-color:var(--accent)}
+#toolrows .hint{display:block}
+#toolrows a{text-decoration:underline}
+section.server{margin-top:26px;padding-top:14px;border-top:1px solid var(--soft)}
+section.server h2{font-size:15px;font-weight:500}
+.spin{display:inline-block;width:12px;height:12px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:r .8s linear infinite;vertical-align:-1px;margin-right:6px}
+@keyframes r{to{transform:rotate(360deg)}}
+#toast{position:fixed;right:18px;bottom:18px;z-index:90;display:grid;gap:8px}
+#toast div{padding:9px 14px;border-radius:10px;background:#1b1e25;border:1px solid var(--line);box-shadow:0 10px 28px rgba(0,0,0,.4);max-width:520px;white-space:pre-wrap}
+#toast .err{color:var(--err)}#toast .ok{color:var(--ok)}
+</style>
+</head>
+<body>
+<div class="wrap" id="app" hidden>
+  <nav class="tabs" aria-label="Admin"><a href="/admin.html">Users</a><a href="/admin-models.html" aria-current="page">Models</a><a href="/admin-tools.html">Tools</a><a href="/admin-code.html">Code</a><a href="/admin-features.html">Features</a></nav>
+
+  <section id="list">
+    <div class="head"><h1>Models</h1><span class="count" id="count">0</span></div>
+    <label class="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      <input id="q" type="search" placeholder="Search Models" aria-label="Search models">
+    </label>
+    <p class="hint" style="margin:0 2px 8px">A model switched off is gone from every user's model list, and Auto no longer sends messages to it. Click a model to change how it answers.</p>
+    <ul id="rows"></ul>
+    <div class="none" id="none" hidden>No models found<br><span class="hint">Try adjusting your search to find what you are looking for.</span></div>
+  </section>
+
+  <section id="edit" hidden>
+    <a class="back" href="#">‹ Models</a>
+    <div class="title">
+      <h1 id="name"></h1><span class="sub" id="model"></span>
+      <label><span id="state-lbl">Enabled</span><button type="button" class="sw" role="switch" id="enabled" aria-labelledby="state-lbl"></button></label>
+    </div>
+    <form id="f">
+      <label class="lbl"><b>System Prompt</b>Set instructions that guide how this model behaves throughout a chat. Empty = the default shown in grey.
+        <textarea name="system" style="margin-top:6px"></textarea></label>
+      <fieldset class="lbl"><legend><b>Tools</b></legend>Ticked for every new chat with this model; a user can untick them in the chat. Tools switched off are not listed.
+        <div id="toolrows"></div></fieldset>
+      <div>
+        <button type="button" class="fold" id="fold" aria-expanded="false" aria-controls="params">
+          <span>Advanced Params</span><span id="modified">Default</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>
+        </button>
+        <p class="hint">Override generation settings such as temperature, token limits and sampling. Settings left on Default use the value in grey (from models.yaml). Applies to the next message, no restart.</p>
+        <div class="params" id="params" hidden></div>
+      </div>
+      <div class="actions"><button class="btn go" type="submit">Save</button><button class="btn" type="button" id="reset">Reset to defaults</button></div>
+    </form>
+
+    <section class="server" id="server" hidden>
+      <h2>Server</h2>
+      <p class="hint">Set on llama-server itself, so saving restarts it. Context Length is one pool shared by all slots (kv-unified): one chat can use all of it, chats running at the same time share it. Slots are how many requests it answers at once. More of either takes more GPU memory, and every model must fit on the card together.</p>
+      <div class="params" id="sparams" style="padding:0"></div>
+      <div class="actions"><button class="btn go" type="button" id="apply">Save &amp; restart llama-server</button><span class="hint" id="apply-note"></span></div>
+    </section>
+  </section>
+</div>
+<div id="toast" role="status" aria-live="polite"></div>
+<script>
+const $ = (id) => document.getElementById(id);
+/* Open WebUI's Advanced Params, in its order, limited to what llama-server honours.
+   [key, label, hint, slider step, start value when switched to Custom and the model has no default] */
+const PARAMS = [
+  ['seed', 'Seed', 'A fixed number makes the same question give the same answer.', 1, 42],
+  ['stop', 'Stop Sequence', 'One per line. The model stops writing when it reaches one.'],
+  ['temperature', 'Temperature', 'Higher = more varied and creative, lower = more focused and repeatable.', 0.05, 0.8],
+  ['num_predict', 'Max Tokens (num_predict)', 'The longest answer, in tokens.', 1, 2048],
+  ['top_k', 'top_k', 'Only this many most likely words are considered. Lower = safer text.', 1, 40],
+  ['top_p', 'top_p', 'Only the most likely words that add up to this share are considered.', 0.05, 0.9],
+  ['min_p', 'min_p', 'Drops words much less likely than the best one.', 0.05, 0.05],
+  ['typical_p', 'typical_p', 'Keeps words close to the expected surprise. 1 = off.', 0.05, 1],
+  ['frequency_penalty', 'frequency_penalty', 'Pushes the model away from words it already used often.', 0.05, 0],
+  ['presence_penalty', 'presence_penalty', 'Pushes the model towards new topics.', 0.05, 0],
+  ['mirostat', 'mirostat', 'Keeps the text at a steady surprise level. 0 = off, 1 or 2 = on (top_k/top_p are then ignored).', 1, 0],
+  ['mirostat_eta', 'mirostat_eta', 'How fast mirostat reacts.', 0.05, 0.1],
+  ['mirostat_tau', 'mirostat_tau', 'Mirostat target: lower = more focused text.', 0.5, 5],
+  ['repeat_last_n', 'repeat_last_n', 'How far back to look for repeats. 0 = off, -1 = the whole context.', 1, 64],
+  ['repeat_penalty', 'repeat_penalty', 'Higher stops the model repeating itself (about 1.1 is usual).', 0.05, 1.1],
+  ['think', 'think', 'Lets a thinking model (gemma4) reason before it answers. Off by default: on long documents its thinking filled the context.'],
+];
+const SERVER = [
+  ['ctx_size', 'Context Length (ctx-size)', 'Tokens of conversation and files the model can hold, shared by its slots.', 1024],
+  ['parallel', 'Parallel slots', 'Requests answered at the same time; more wait in a queue.', 1],
+];
+let data, current, params = {}, toolList = null;  // toolList: enabled tools, null if they could not be loaded
+const toast = (t, ok) => { const d = document.createElement('div'); d.className = ok ? 'ok' : 'err'; d.textContent = t; d.onclick = () => d.remove(); $('toast').append(d); setTimeout(() => d.remove(), ok ? 4000 : 15000); };
+async function api(method, path, body) {
+  const r = await fetch(path, { method, headers: { 'Content-Type': 'application/json' }, body: body && JSON.stringify(body) });
+  if (r.status === 401) { location.replace('/'); throw new Error('Signed out.'); }
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(typeof j.detail === 'string' ? j.detail : Array.isArray(j.detail) ? j.detail.map((d) => d.msg).join('; ') : 'Error ' + r.status);
+  return j;
+}
+const enabled = (m) => m.enabled !== false;
+const fmt = (v) => v === true ? 'On' : v === false ? 'Off' : Array.isArray(v) ? v.join(', ') : String(v);
+
+/* ── list ── */
+function setSwitch(sw, m) {
+  sw.dataset.id = m.id; sw.setAttribute('aria-checked', enabled(m)); sw.title = enabled(m) ? 'Enabled' : 'Disabled';
+  sw.closest('li')?.classList.toggle('off', !enabled(m));
+}
+// updates the switches in place, so keyboard focus stays where it was
+const mark = (m) => document.querySelectorAll('.sw').forEach((sw) => sw.dataset.id === m.id && setSwitch(sw, m));
+async function toggle(m) {
+  m.enabled = !enabled(m); mark(m);  // optimistic, as in Open WebUI
+  try { await api('PATCH', '/api/admin/models/' + encodeURIComponent(m.id) + '/enabled', { enabled: m.enabled }); toast(m.label + (m.enabled ? ' is on' : ' is off'), true); }
+  catch (x) { m.enabled = !m.enabled; mark(m); toast(x.message); }
+}
+function renderList() {
+  const q = $('q').value.trim().toLowerCase();
+  const shown = data.models.filter((m) => !q || [m.label, m.model, m.id, m.description].some((s) => (s || '').toLowerCase().includes(q)));
+  $('count').textContent = shown.length;
+  $('none').hidden = shown.length > 0;
+  $('rows').replaceChildren(...shown.map((m) => {
+    const li = document.createElement('li'), a = document.createElement('a'), sw = document.createElement('button');
+    a.href = '#' + encodeURIComponent(m.id);
+    a.innerHTML = '<span><span class="nm"></span></span><span class="sub"></span>';
+    a.querySelector('.nm').textContent = m.label;
+    if (!m.available) a.firstChild.insertAdjacentHTML('beforeend', '<span class="tag">not available</span>');
+    a.querySelector('.sub').textContent = [m.model, m.description].filter(Boolean).join(' · ');
+    sw.type = 'button'; sw.className = 'sw'; sw.setAttribute('role', 'switch'); sw.setAttribute('aria-label', 'Enabled: ' + m.label);
+    sw.onclick = () => toggle(m);
+    li.append(a, sw);
+    setSwitch(sw, m);
+    return li;
+  }));
+}
+$('q').oninput = renderList;
+
+/* ── editor ── */
+function rangeParam(key, value, [low, high], step, onInput) {
+  const box = document.createElement('div'); box.className = 'range';
+  const r = document.createElement('input'), n = document.createElement('input');
+  r.type = 'range'; n.type = 'number';
+  r.min = n.min = low; r.max = n.max = high; r.step = step; n.step = step < 1 ? 'any' : step;
+  r.value = n.value = value;
+  r.setAttribute('aria-label', key); n.setAttribute('aria-label', key);
+  r.oninput = () => { n.value = r.value; onInput(+r.value); };
+  n.oninput = () => { if (n.value !== '') { r.value = n.value; onInput(+n.value); } };
+  if (high - low > 1e6) box.append(n); else box.append(r, n);  // seed: a slider that wide is useless
+  return box;
+}
+function renderParams() {
+  const d = current.defaults, wrap = $('params');
+  wrap.replaceChildren();
+  for (const [key, label, hint, step, start] of PARAMS) {
+    if (key !== 'stop' && key !== 'think' && !data.limits[key]) continue;  // the backend does not take it
+    const p = document.createElement('div'), custom = params[key] != null;
+    p.className = 'param';
+    p.innerHTML = '<div class="prow"><span></span><button type="button"></button></div><div class="hint"></div>';
+    p.querySelector('span').textContent = label;
+    p.querySelector('.hint').textContent = hint;
+    const b = p.querySelector('button'), refocus = (sel) => wrap.querySelector(sel)?.focus();
+    b.dataset.t = key;
+    b.textContent = (custom ? (key === 'think' ? fmt(params.think) : 'Custom') : 'Default' + (d[key] != null ? ' (' + fmt(d[key]) + ')' : ''));
+    b.className = custom ? '' : 'dflt';
+    b.setAttribute('aria-label', label + ': ' + b.textContent);
+    if (key === 'think') {
+      // Open WebUI cycles Default -> On -> (effort text) -> Off; llama-server takes on/off only.
+      b.onclick = () => { params.think = params.think == null ? true : params.think ? false : null; renderParams(); refocus('[data-t="think"]'); };
+      wrap.append(p); continue;
+    }
+    b.onclick = () => {
+      params[key] = custom ? null : key === 'stop' ? (d.stop || []) : (d[key] ?? start);
+      renderParams();
+      refocus(custom ? '[data-t="' + key + '"]' : '[data-k="' + key + '"]');
+    };
+    if (custom && key === 'stop') {
+      const t = document.createElement('textarea'); t.dataset.k = key; t.setAttribute('aria-label', label);
+      t.value = (params.stop || []).join('\n');
+      t.oninput = () => (params.stop = t.value.split('\n'));
+      p.append(t);
+    } else if (custom) {
+      const box = rangeParam(label, params[key], data.limits[key], step, (v) => (params[key] = v));
+      box.lastChild.dataset.k = key;
+      p.append(box);
+    }
+    wrap.append(p);
+  }
+  const n = PARAMS.filter(([k]) => params[k] != null).length;
+  $('modified').textContent = n ? n + ' modified' : 'Default';
+}
+function renderServer() {
+  const s = data.server, show = !!(s && s.available && current.server);
+  $('server').hidden = !show;
+  if (!show) return;
+  const wrap = $('sparams'), values = { ...current.server };
+  wrap.replaceChildren();
+  for (const [key, label, hint, step] of SERVER) {
+    const p = document.createElement('div'); p.className = 'param';
+    p.innerHTML = '<div class="prow"><span></span><span class="hint"></span></div><div class="hint"></div>';
+    p.querySelector('span').textContent = label;
+    p.querySelector('.prow .hint').textContent = 'now ' + current.server[key];
+    p.lastChild.textContent = hint;
+    p.append(rangeParam(label, values[key], s.limits[key], step, (v) => (values[key] = v)));
+    wrap.append(p);
+  }
+  $('apply').onclick = () => apply(values);
+}
+async function apply(values) {
+  if (!confirm('Save and restart llama-server?\n\nReplies being written right now, for every user, are cut off, and no model answers for about a minute. If a model does not load with the new settings, the previous ones are put back.')) return;
+  const btn = $('apply');
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span>Restarting llama-server…';
+  $('apply-note').textContent = 'Takes about a minute. Keep this page open.';
+  try {
+    await api('PUT', '/api/admin/llama-server', { [current.model]: values });
+    await api('POST', '/api/admin/llama-server/apply');
+    toast('llama-server restarted with the new settings.', true);
+  } catch (x) { toast(x.message); }
+  finally {
+    btn.disabled = false; btn.textContent = 'Save & restart llama-server'; $('apply-note').textContent = '';
+    await load().catch((x) => toast(x.message));
+  }
+}
+function renderTools() {
+  const box = $('toolrows'), ids = current.saved.tool_ids || [];
+  if (!toolList) { box.textContent = 'The tool list could not be loaded; saving keeps the tools picked before.'; return; }
+  if (!toolList.length) { box.innerHTML = '<span class="hint">No tools yet. Add one in <a href="/admin-tools.html">Tools</a>.</span>'; return; }
+  box.replaceChildren(...toolList.map((t) => {
+    const l = document.createElement('label'), c = document.createElement('input'), text = document.createElement('span'), sub = document.createElement('span');
+    c.type = 'checkbox'; c.value = t.id; c.checked = ids.includes(t.id);
+    text.textContent = t.name; sub.className = 'hint'; sub.textContent = t.meta?.description || t.id;
+    text.append(sub); l.append(c, text);
+    return l;
+  }));
+}
+function show(m) {
+  current = m;
+  params = Object.fromEntries(PARAMS.map(([k]) => [k, m.saved[k] ?? null]));
+  $('name').textContent = m.label;
+  $('model').textContent = m.model + (m.available ? '' : ' · not available');
+  setSwitch($('enabled'), m);
+  $('f').system.value = m.saved.system || '';
+  $('f').system.placeholder = m.defaults.system || '';
+  renderTools();
+  renderParams();
+  renderServer();
+}
+$('enabled').onclick = () => toggle(current);
+$('fold').onclick = () => { const open = $('params').hidden; $('params').hidden = !open; $('fold').setAttribute('aria-expanded', open); };
+$('reset').onclick = () => { $('f').system.value = ''; $('toolrows').querySelectorAll('input').forEach((c) => (c.checked = false)); for (const k in params) params[k] = null; $('f').requestSubmit(); };
+$('f').onsubmit = async (e) => {
+  e.preventDefault();
+  const body = { system: $('f').system.value, tool_ids: toolList ? [...$('toolrows').querySelectorAll('input:checked')].map((c) => c.value) : current.saved.tool_ids || [] };
+  for (const [k, v] of Object.entries(params)) body[k] = k === 'stop' && v ? v.map((s) => s.trim()).filter(Boolean) : v;
+  try { const r = await api('PUT', '/api/admin/models/' + encodeURIComponent(current.id), body); current.saved = r.saved; toast('Saved ' + current.label, true); show(current); }
+  catch (x) { toast(x.message); }
+};
+
+/* ── routing: #<id> opens a model, so the browser's Back returns to the list ── */
+function paint() {
+  const id = decodeURIComponent(location.hash.slice(1)), m = data.models.find((x) => x.id === id);
+  $('list').hidden = !!m; $('edit').hidden = !m;
+  current = m;
+  if (m) show(m); else renderList();
+}
+window.onhashchange = () => { paint(); window.scrollTo(0, 0); };
+async function load() {
+  [data, toolList] = await Promise.all([api('GET', '/api/admin/models'), api('GET', '/api/admin/tools').then((t) => t.filter(enabled), () => null)]);
+  paint();
+}
+(async () => {
+  const me = await authReady;
+  if (me.role !== 'admin') return location.replace('/');
+  await load();
+  $('app').hidden = false;
+})().catch((x) => toast(x.message));
+</script>
+</body>
+</html>

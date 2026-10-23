@@ -94,18 +94,23 @@ Rules:
 - The same kind of line gets the same name in every item: if the first job's first line is "title", every job's first line is "title".
 - Bullet lines of one item all get the same name, "bullets".
 - Something that appears once in the document (the person's name, a phone number, a profile text) is a "field", never a "group_item".
+- Only headings and labels are "fixed". Body text, sentences and bullet points are sample content that will be replaced: never "fixed".
+- In a report or letter: a paragraph under a heading is a "field" named after its section (e.g. eastern_europe_text); the bullet lines under one heading are a group named after that section (e.g. eastern_europe_points), instance 1, name "bullets".
 - One school or one job is still a group with a single item: group "education", instance 1.
 - Lines marked (section heading) are already known to be fixed; they are shown so you can see where each section starts.
 - Answer with JSON only, one key per paragraph id you were asked about."""
 
-EXTRACT_SYSTEM = """You move a person's content into the slots of a Word template. You get the slots, the user's instructions and source text.
+EXTRACT_SYSTEM = """You fill the slots of a Word template. You get the slots (each with a sample, its length and the heading it sits under), the user's instructions and maybe source text.
+
+First decide what the user wants:
+- COPY: they gave source text (a CV, notes, a report) to put into the template. Fill every slot from it and copy names, dates, numbers, places and wording exactly as written there. A list slot gets one item for every entry in the source, in its order: do not merge entries and do not drop any.
+- WRITE: they ask you to write or add something ("write about ...", "add something about ...", "make it about ...", "a report on ..."), or there is no source text. Then write new text for EVERY slot yourself, on the topic they asked for, fitting the heading each slot sits under, and about as long as its sample. Never leave a slot empty in this case.
+- Both: use the source's facts, and write what the source does not cover.
 
 Rules:
-- Fill every slot from the instructions or the source text. Copy names, dates, numbers, places and wording exactly as they are written there.
-- A list slot gets one item for every entry in the source, in the source's order: every job, every school, every skill. Do not merge entries and do not drop any.
-- The samples only show what KIND of text belongs in a slot and how it is written. Never copy a sample into your answer.
-- If the source has nothing for a slot, answer with an empty string "" (or an empty list). Never invent a name, a date, a number or an employer.
-- Only when the instructions ask you to write something (for example a profile text) may you write it yourself, from the facts in the source.
+- The samples only show what KIND of text belongs in a slot, how long it is and how it is written. Never copy a sample into your answer.
+- Never put the user's instructions themselves into a slot.
+- Never invent facts about a real person or company: a name, phone, email, address, date, employer or figure that is not in the instructions or the source stays "".
 - Answer with JSON only."""
 
 EDIT_SCHEMA = {

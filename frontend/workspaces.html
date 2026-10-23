@@ -1,0 +1,594 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<script src="/auth.js"></script>
+<title>Fastshot — Knowledge</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,100..900&display=block" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+[hidden]{display:none!important}
+:root{color-scheme:dark;--line:rgba(214,228,255,.10);--soft:rgba(255,255,255,.06);--text:#ECECEF;--muted:#98999C;--dim:#77787B;--accent:#F49D70;--err:#FBBC94;--ok:#8FD3A8}
+body{min-height:100vh;background:#0a0d12;color:var(--text);font:14px/1.5 Inter,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+button,input,textarea{font:inherit;color:inherit}
+button{cursor:pointer;background:none;border:0}
+a{color:inherit;text-decoration:none}
+:focus-visible{outline:2px solid #F8B285;outline-offset:2px;border-radius:6px}
+/* only admins change workspaces; the server refuses anyone else anyway */
+body:not(.admin) [data-admin]{display:none!important}
+.wrap{max-width:1100px;margin:0 auto;padding:18px 20px 64px}
+.head{display:flex;align-items:center;gap:8px;margin:10px 2px 14px;font-size:18px}
+.head h1{font-size:inherit;font-weight:500}
+.head .btn{margin-left:auto}
+.count{font-size:12px;color:var(--muted);background:var(--soft);border-radius:999px;padding:1px 9px}
+.search{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:10px;background:var(--soft);margin-bottom:8px}
+.search svg{width:14px;height:14px;color:var(--dim);flex:none}
+.search input[type=search]{flex:1;min-width:0;background:none;border:0;outline:0;padding:0}
+.btn{padding:6px 12px;border-radius:9px;background:rgba(255,255,255,.08);border:1px solid var(--line);font-size:13px;white-space:nowrap}
+.btn:hover{background:rgba(255,255,255,.13)}
+.btn.go{background:linear-gradient(163deg,#FBBC94,#F49D70 46%,#E88654);color:#1d1d20;font-weight:500;border:0}
+.btn:disabled{opacity:.55;cursor:default}
+.hint{font-size:12px;color:var(--dim)}
+/* workspace list, as the Tools tab's list */
+#rows{list-style:none}
+#rows li{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:12px}
+#rows li:hover{background:rgba(255,255,255,.025)}
+#rows a{flex:1;min-width:0;display:grid}
+#rows .sub{font-size:12px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.del{width:28px;height:28px;display:grid;place-items:center;border-radius:8px;color:var(--dim);flex:none}
+.del:hover{color:var(--err);background:var(--soft)}
+.del svg{width:15px;height:15px}
+.none{padding:26px 10px;color:var(--dim);text-align:center}
+/* one workspace */
+.back{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:13px;margin:6px 2px 4px}
+.back:hover{color:var(--text)}
+.title{display:flex;align-items:center;gap:10px;margin:6px 2px 12px}
+.title h1{font-size:18px;font-weight:500;flex:1;min-width:0;overflow-wrap:anywhere}
+.engine{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;font-size:12.5px;color:var(--ok);margin:0 2px 16px}
+.engine.words{color:var(--err)}
+form{display:grid;gap:14px}
+.lbl{display:grid;gap:5px;font-size:12.5px;color:var(--muted)}
+.lbl b{font-weight:500;color:var(--text);font-size:13px}
+input:not([type=file]),textarea{padding:8px 10px;border-radius:9px;background:#1f232b;border:1px solid var(--line);color:var(--text);width:100%}
+input:read-only,textarea:read-only{opacity:.75}
+textarea{min-height:76px;resize:vertical}
+.actions{display:flex;gap:8px;align-items:center}
+section.part{display:grid;gap:10px;margin-top:26px;padding-top:14px;border-top:1px solid var(--soft)}
+section.part h2{font-size:15px;font-weight:500;display:flex;align-items:center;gap:8px}
+.drop{display:flex;align-items:center;gap:12px;width:100%;padding:14px;border-radius:12px;text-align:left;border:1px dashed var(--line);background:rgba(255,255,255,.025)}
+.drop:hover,.drop.over{border-color:var(--accent);background:var(--soft)}
+.drop svg{width:20px;height:20px;flex:none;color:var(--muted)}
+.drop span{display:grid;font-size:12px;color:var(--dim)}
+.drop b{font-weight:500;font-size:13.5px;color:var(--text)}
+.queue{display:grid;gap:4px}
+.job{display:flex;flex-wrap:wrap;gap:2px 12px;padding:6px 10px;border-radius:9px;background:rgba(255,255,255,.03);font-size:13px}
+.job b{font-weight:500;overflow-wrap:anywhere}
+.job span{color:var(--muted);flex:1;min-width:160px}
+.job.ok span{color:var(--ok)} .job.err span,.job.note span{color:var(--err)}
+/* documents, as the Users table */
+.tablewrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th{font-weight:400;font-size:12px;color:var(--muted);text-align:left;border-bottom:1.5px solid var(--line);padding:7px 10px;white-space:nowrap}
+td{padding:9px 10px;border-bottom:1px solid var(--soft);color:#D5D5D8}
+tr:hover td{background:rgba(255,255,255,.025)}
+td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+td.name{overflow-wrap:anywhere}
+td.name small{display:block;color:var(--err);font-size:12px}
+td.act{text-align:right;width:40px}
+@media (max-width:520px){th.opt,td.opt{display:none}}
+/* trying a question */
+.ask{display:flex;gap:8px}
+.status{font-size:12.5px;color:var(--muted)}
+.status.err{color:var(--err)} .status.ok{color:var(--ok)}
+.hits{display:grid;gap:8px}
+.hit{padding:10px 12px;border-radius:10px;background:#14171d;border:1px solid var(--soft)}
+.hit header{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:12px;color:var(--muted);margin-bottom:4px}
+.hit header b{color:var(--text);font-weight:500}
+.hit p{white-space:pre-wrap;font-size:13px;color:#D5D5D8;max-height:9.5em;overflow:auto}
+.tag{font-size:11px;padding:1px 8px;border-radius:999px;background:var(--soft)}
+#toast{position:fixed;right:18px;bottom:18px;z-index:90;display:grid;gap:8px}
+#toast div{padding:9px 14px;border-radius:10px;background:#1b1e25;border:1px solid var(--line);box-shadow:0 10px 28px rgba(0,0,0,.4);max-width:520px}
+#toast .err{color:var(--err)}#toast .ok{color:var(--ok)}
+dialog{margin:auto;width:min(440px,calc(100vw - 32px));border:1px solid var(--line);border-radius:16px;background:#14171d;color:var(--text);padding:0}
+dialog::backdrop{background:rgba(0,0,0,.6)}
+dialog form{padding:20px;gap:12px}
+dialog h2{font-size:16px;font-weight:500}
+.err-line{color:var(--err);min-height:1.3em;font-size:13px}
+.row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+/* document viewer */
+.doc-link{text-align:left;overflow-wrap:anywhere}
+.doc-link:hover{color:var(--accent);text-decoration:underline}
+#viewDlg{width:min(980px,calc(100vw - 32px));height:min(88vh,920px)}
+#viewDlg[open]{display:flex;flex-direction:column}
+.v-head{display:grid;gap:10px;padding:16px 20px 12px;border-bottom:1px solid var(--line)}
+.v-top{display:flex;align-items:center;gap:8px}
+.v-top h2{flex:1;min-width:0;overflow-wrap:anywhere}
+.v-head .search{margin:0}
+#v-count{font-size:12px;color:var(--muted);white-space:nowrap}
+.v-body{flex:1;min-height:0;overflow:auto;padding:8px 20px 24px}
+.v-body .status{padding:12px 0}
+.sec{padding:14px 0;border-bottom:1px solid var(--soft)}
+.sec h3{font-size:12px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px}
+.sec.at h3{color:var(--accent)}
+.sec p{white-space:pre-wrap;overflow-wrap:anywhere;font-size:13.5px;line-height:1.6;color:#D5D5D8}
+mark{background:rgba(244,157,112,.35);color:inherit;border-radius:2px}
+mark.cur{background:var(--accent);color:#1d1d20}
+</style>
+</head>
+<body>
+<div class="wrap" id="app" hidden>
+  <section id="list">
+    <div class="head"><h1>Knowledge</h1><span class="count" id="count">0</span><button class="btn go" id="new" data-admin>+ New workspace</button></div>
+    <label class="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      <input id="q" type="search" placeholder="Search Knowledge" aria-label="Search workspaces">
+    </label>
+    <p class="hint" style="margin:0 2px 8px">A workspace holds a team's documents: policies, contracts, manuals, reports. Pick it in the chat's model menu, and every answer is based on the passages that match the question, with the sources listed under it. Everything stays on this machine.</p>
+    <ul id="rows"></ul>
+    <div class="none" id="none" hidden>No workspaces found<br><span class="hint" data-admin>Add one with “New workspace”, e.g. HR policies.</span></div>
+  </section>
+
+  <section id="edit" hidden>
+    <a class="back" href="#">‹ Knowledge</a>
+    <div class="title"><h1 id="d-title"></h1><a class="btn go" id="d-chat" href="/">Ask in the chat</a></div>
+    <p class="engine" id="engine"><span id="engine-text"></span><button type="button" class="btn" id="reindex" hidden data-admin>Re-index</button></p>
+    <form id="f">
+      <label class="lbl"><b>Name</b><input id="d-name" maxlength="80" required></label>
+      <label class="lbl"><b>Instructions for every answer</b><textarea id="d-instructions" maxlength="4000" placeholder="For example: answer for employees in India; when a policy has changed, say which version applies."></textarea><span class="hint">Optional.</span></label>
+      <div class="actions" data-admin><button class="btn go" type="submit" id="save">Save</button></div>
+    </form>
+
+    <section class="part">
+      <h2>Documents <span class="count" id="doc-count"></span></h2>
+      <button type="button" class="drop" id="drop" data-admin>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        <span><b>Add documents</b><span id="drop-sub">PDF, Word, Excel, CSV or text. Choose or drop many at once</span></span>
+      </button>
+      <input type="file" id="files" multiple hidden>
+      <div class="queue" id="queue"></div>
+      <div class="tablewrap"><table id="docs" hidden>
+        <thead><tr><th scope="col">Document</th><th scope="col" class="opt">Pages</th><th scope="col">Passages</th><th scope="col" class="opt">Added</th><th data-admin></th></tr></thead>
+        <tbody id="doc-rows"></tbody>
+      </table></div>
+      <p class="none" id="no-docs" hidden>No documents yet.</p>
+    </section>
+
+    <section class="part">
+      <h2>Try a question</h2>
+      <p class="hint">Shows the passages an answer would be based on, without asking a model.</p>
+      <form class="ask" id="try-form">
+        <input id="try-q" placeholder="How many days of sick leave do we get?" aria-label="Question">
+        <button type="submit" class="btn" id="try-go">Search</button>
+      </form>
+      <p class="status" id="try-status" role="status"></p>
+      <div class="hits" id="hits"></div>
+    </section>
+  </section>
+</div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<dialog id="newDlg">
+  <form id="newForm" method="dialog">
+    <h2>New workspace</h2>
+    <label class="lbl">Name<input id="new-name" maxlength="80" required placeholder="HR policies" autocomplete="off"></label>
+    <div class="err-line" id="newErr" role="alert"></div>
+    <div class="row"><button type="button" class="btn" data-close>Cancel</button><button class="btn go">Create</button></div>
+  </form>
+</dialog>
+
+<dialog id="viewDlg" aria-labelledby="v-title">
+  <div class="v-head">
+    <div class="v-top">
+      <h2 id="v-title"></h2>
+      <a class="btn" id="v-open" target="_blank" rel="noopener">Open original</a>
+      <a class="btn" id="v-download">Download</a>
+      <button type="button" class="btn" data-close>Close</button>
+    </div>
+    <label class="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      <input id="v-q" type="search" autofocus placeholder="Find in document (Enter: next, Shift+Enter: previous)" aria-label="Find in document">
+      <span id="v-count" aria-live="polite"></span>
+    </label>
+  </div>
+  <div class="v-body" id="v-body" tabindex="-1"></div>
+</dialog>
+
+<script>
+(() => {
+  const WS_KEY = 'fastshot.workspace';
+  const $ = (id) => document.getElementById(id);
+  const node = (tag, cls, text) => {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  };
+  const state = { list: [], embedder: null, accepted: [], maxMb: 50, current: null, busy: false, admin: false };
+  const toast = (t, ok) => { const d = node('div', ok ? 'ok' : 'err', t); d.onclick = () => d.remove(); $('toast').append(d); setTimeout(() => d.remove(), ok ? 4000 : 15000); };
+  function status(el, text, kind) { el.className = 'status' + (kind ? ' ' + kind : ''); el.textContent = text || ''; }
+
+  async function call(path, options) {
+    let res;
+    try {
+      res = await fetch(path, options);
+    } catch {
+      throw new Error('The backend is not reachable.');
+    }
+    if (res.status === 401) { location.replace('/login.html'); throw new Error('Signed out.'); }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'Request failed (' + res.status + ')');
+    return data;
+  }
+  const json = (method, body) => ({ method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  /* Reads an NDJSON stream, handing each event to `on`; an `error` event becomes a thrown error. */
+  async function stream(path, options, on) {
+    let res;
+    try {
+      res = await fetch(path, options);
+    } catch {
+      throw new Error('The backend is not reachable.');
+    }
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(typeof data.detail === 'string' ? data.detail : 'Request failed (' + res.status + ')');
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let cut;
+      while ((cut = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, cut).trim();
+        buffer = buffer.slice(cut + 1);
+        if (!line) continue;
+        const event = JSON.parse(line);
+        if (event.type === 'error') throw new Error(event.message);
+        on(event);
+      }
+    }
+  }
+  const plural = (n, one, many) => n + ' ' + (n === 1 ? one : many);
+  const wsUrl = (id, rest = '') => '/api/workspaces/' + encodeURIComponent(id) + rest;
+
+  /* ── The list ── */
+  async function loadList() {
+    const data = await call('/api/workspaces');
+    state.list = data.workspaces;
+    state.embedder = data.embedder;
+    state.accepted = data.accepted;
+    state.maxMb = data.max_upload_mb;
+    $('files').accept = state.accepted.join(',');
+    $('drop-sub').textContent = 'PDF, Word, Excel, CSV or text, up to ' + state.maxMb + ' MB each. Choose or drop many at once';
+  }
+  function renderList() {
+    const q = $('q').value.trim().toLowerCase();
+    const shown = state.list.filter((w) => !q || w.name.toLowerCase().includes(q));
+    $('count').textContent = state.list.length;
+    $('none').hidden = shown.length > 0;
+    $('rows').replaceChildren(...shown.map((w) => {
+      const li = node('li'), a = node('a');
+      a.href = '#' + encodeURIComponent(w.id);
+      a.append(node('span', '', w.name), node('span', 'sub', plural(w.documents, 'document', 'documents') + ' · ' + plural(w.passages, 'passage', 'passages')));
+      li.append(a);
+      if (state.admin) {
+        const del = node('button', 'del');
+        del.type = 'button'; del.title = 'Delete'; del.setAttribute('aria-label', 'Delete ' + w.name);
+        del.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>';
+        del.onclick = () => remove(w);
+        li.append(del);
+      }
+      return li;
+    }));
+  }
+  $('q').oninput = renderList;
+  async function remove(w) {
+    if (!confirm('Delete "' + w.name + '" and its index?\n\nThe original files on your computer are not touched.')) return;
+    try {
+      await call(wsUrl(w.id), { method: 'DELETE' });
+      try { if (localStorage.getItem(WS_KEY) === w.id) localStorage.removeItem(WS_KEY); } catch {}
+      await loadList(); renderList();
+      toast('Deleted ' + w.name, true);
+    } catch (err) { toast(err.message); }
+  }
+
+  const newDlg = $('newDlg');
+  $('new').onclick = () => { $('newForm').reset(); $('newErr').textContent = ''; newDlg.showModal(); };
+  $('newForm').onsubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const made = await call('/api/workspaces', json('POST', { name: $('new-name').value.trim() }));
+      newDlg.close();
+      await loadList();
+      location.hash = '#' + encodeURIComponent(made.id);
+    } catch (err) { $('newErr').textContent = err.message; }
+  };
+  for (const b of document.querySelectorAll('[data-close]')) b.onclick = () => b.closest('dialog').close();
+
+  /* ── One workspace ── */
+  function renderDetail() {
+    const w = state.current;
+    $('d-title').textContent = w.name;
+    $('d-name').value = w.name;
+    $('d-instructions').value = w.instructions || '';
+
+    const e = state.embedder || {};
+    let words = !e.ready;
+    let text = e.ready
+      ? 'Search by meaning and by words, with ' + e.model + '.'
+      : (e.reason || 'Search by words only.');
+    if (e.ready && w.stale) { words = true; text = 'These passages were indexed with another embedding model. Re-index to search by meaning with ' + e.model + '.'; }
+    else if (e.ready && w.missing_vectors) { words = true; text = plural(w.missing_vectors, 'passage was', 'passages were') + ' indexed for words only. Re-index to search them by meaning too.'; }
+    $('engine').classList.toggle('words', words);
+    $('engine-text').textContent = text;
+    $('reindex').hidden = !(e.ready && (w.stale || w.missing_vectors));
+
+    const rows = $('doc-rows');
+    rows.replaceChildren();
+    $('doc-count').textContent = w.documents.length ? plural(w.documents.length, 'file', 'files') + ' · ' + plural(w.passages, 'passage', 'passages') : '0';
+    $('docs').hidden = !w.documents.length;
+    $('no-docs').hidden = !!w.documents.length;
+    for (const d of w.documents) {
+      const tr = node('tr');
+      const name = node('td', 'name');
+      const open = node('button', 'doc-link', d.name);
+      open.type = 'button'; open.title = 'Read ' + d.name; open.dataset.doc = d.id;
+      open.addEventListener('click', () => openDoc(d.id, ''));
+      name.append(open);
+      if (d.truncated) name.append(node('small', '', 'Very long: only the first part is indexed'));
+      tr.append(name, node('td', 'num opt', d.pages ? String(d.pages) : '–'), node('td', 'num', String(d.passages)), node('td', 'num opt', d.added));
+      if (state.admin) {
+        const remove = node('button', 'del');
+        remove.type = 'button'; remove.title = 'Remove';
+        remove.setAttribute('aria-label', 'Remove ' + d.name);
+        remove.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>';
+        remove.addEventListener('click', async () => {
+          remove.disabled = true;
+          try {
+            await call(wsUrl(w.id, '/documents/' + d.id), { method: 'DELETE' });
+            await refresh();
+          } catch (err) {
+            remove.disabled = false;
+            toast(err.message);
+          }
+        });
+        const act = node('td', 'act');
+        act.append(remove);
+        tr.append(act);
+      }
+      rows.append(tr);
+    }
+  }
+  async function refresh() {
+    const id = state.current.id;
+    await loadList();
+    state.current = await call(wsUrl(id));
+    renderDetail();
+  }
+
+  $('f').onsubmit = async (e) => {
+    e.preventDefault();
+    const w = state.current;
+    $('save').disabled = true;
+    try {
+      await call(wsUrl(w.id), json('POST', { name: $('d-name').value, instructions: $('d-instructions').value }));
+      await refresh();
+      toast('Saved', true);
+    } catch (err) { toast(err.message); }
+    finally { $('save').disabled = false; }
+  };
+  $('d-chat').addEventListener('click', () => { try { localStorage.setItem(WS_KEY, state.current.id); } catch {} });
+  $('reindex').addEventListener('click', async () => {
+    const button = $('reindex');
+    button.disabled = true;
+    try {
+      await stream(wsUrl(state.current.id, '/reindex'), { method: 'POST' },
+        (event) => { if (event.type === 'progress') $('engine-text').textContent = event.message; });
+      await refresh();
+    } catch (err) {
+      $('engine-text').textContent = err.message;
+    } finally {
+      button.disabled = false;
+    }
+  });
+
+  /* ── Adding many files: one at a time, each with its own line ── */
+  const queue = [];
+  async function addFiles(files) {
+    if (!state.current) return;
+    const limit = state.maxMb * 1024 * 1024;
+    for (const file of files) {
+      const line = node('div', 'job');
+      const what = node('span', '', 'Waiting');
+      line.append(node('b', '', file.name), what);
+      $('queue').append(line);
+      if (file.size > limit) {
+        line.classList.add('err');
+        what.textContent = 'Over ' + state.maxMb + ' MB: not added';
+        continue;
+      }
+      queue.push({ file, line, what, workspace: state.current.id });
+    }
+    if (!state.busy) drain();
+  }
+  async function drain() {
+    state.busy = true;
+    while (queue.length) {
+      const job = queue.shift();
+      const form = new FormData();
+      form.append('file', job.file);
+      let ended = false;
+      try {
+        await stream(wsUrl(job.workspace, '/documents'), { method: 'POST', body: form }, (event) => {
+          if (event.type === 'progress') job.what.textContent = event.message;
+          else if (event.type === 'skipped') { ended = true; job.line.classList.add('ok'); job.what.textContent = 'Already here, unchanged'; }
+          else if (event.type === 'added') {
+            ended = true;
+            job.line.classList.add(event.note ? 'note' : 'ok');
+            job.what.textContent = (event.replaced ? 'Replaced the earlier version · ' : 'Added · ')
+              + plural(event.passages, 'passage', 'passages') + (event.note ? ' · ' + event.note : '');
+          }
+        });
+        // a server error mid-stream just closes it: say so instead of leaving the last progress line
+        if (!ended) throw new Error('Stopped before the file was added. See the server log.');
+      } catch (err) {
+        job.line.classList.add('err');
+        job.what.textContent = err.message;
+      }
+      if (state.current && state.current.id === job.workspace) await refresh().catch(() => {});
+    }
+    state.busy = false;
+  }
+  $('drop').addEventListener('click', () => $('files').click());
+  $('files').addEventListener('change', () => { addFiles([...$('files').files]); $('files').value = ''; });
+  const drop = $('drop');
+  ['dragenter', 'dragover'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', (e) => addFiles([...(e.dataTransfer?.files || [])]));
+
+  /* ── Trying a question ── */
+  $('try-form').onsubmit = async (e) => {
+    e.preventDefault();
+    const question = $('try-q').value.trim();
+    if (!question || !state.current) return;
+    status($('try-status'), 'Searching…');
+    $('hits').replaceChildren();
+    try {
+      const data = await call(wsUrl(state.current.id, '/search'), json('POST', { question }));
+      status($('try-status'), data.hits.length ? 'Found by ' + data.mode + '. These ' + plural(data.hits.length, 'passage', 'passages') + ' would go to the model' : 'No passage matches. Try other words, or add the document that answers it', data.hits.length ? 'ok' : 'err');
+      data.hits.forEach((h, i) => {
+        const box = node('div', 'hit');
+        const head = node('header');
+        head.append(node('b', '', '[' + (i + 1) + '] ' + h.document), h.label ? node('span', '', h.label) : '', node('span', 'tag', 'by ' + h.matched_by));
+        box.append(head, node('p', '', h.text));
+        $('hits').append(box);
+      });
+    } catch (err) {
+      status($('try-status'), err.message, 'err');
+    }
+  };
+
+  /* ── Reading a document (the chat's Sources link here as #<workspace>/doc/<doc>?label=<section>) ── */
+  const viewDlg = $('viewDlg');
+  const viewer = { seq: 0, opener: null, docId: null, skip: false, parts: [], marks: [], cur: -1, q: '', timer: 0 };
+  const enc = encodeURIComponent;
+  // replaceState does not fire hashchange, so the page is not painted again
+  const setHash = (docId, label) => history.replaceState(null, '', '#' + enc(state.current.id)
+    + (docId == null ? '' : '/doc/' + enc(docId) + (label ? '?label=' + enc(label) : '')));
+  function markText(p, text, re) {
+    const f = document.createDocumentFragment();
+    let last = 0;
+    if (re) for (const m of text.matchAll(re)) {
+      f.append(text.slice(last, m.index), node('mark', '', m[0]));
+      last = m.index + m[0].length;
+    }
+    if (!last && !p.firstElementChild) return; // no marks before or now: leave it alone
+    f.append(text.slice(last));
+    p.replaceChildren(f);
+  }
+  function show(i) {
+    const m = viewer.marks;
+    if (!m.length) return;
+    m[viewer.cur]?.classList.remove('cur');
+    viewer.cur = (i + m.length) % m.length;
+    m[viewer.cur].classList.add('cur');
+    m[viewer.cur].scrollIntoView({ block: 'center' });
+    $('v-count').textContent = (viewer.cur + 1) + ' of ' + m.length;
+  }
+  function find() {
+    clearTimeout(viewer.timer);
+    viewer.q = $('v-q').value.trim();
+    // escaped, so typed text is never a pattern; any run of spaces also matches a line break
+    const re = viewer.q.length > 1 ? new RegExp(viewer.q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+'), 'gi') : null;
+    for (const s of viewer.parts) markText(s.p, s.text, re);
+    viewer.marks = [...$('v-body').querySelectorAll('mark')];
+    viewer.cur = -1;
+    $('v-count').textContent = re && !viewer.marks.length ? 'No match' : '';
+    show(0);
+  }
+  $('v-q').addEventListener('input', () => { clearTimeout(viewer.timer); viewer.timer = setTimeout(find, 200); });
+  $('v-q').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    if ($('v-q').value.trim() !== viewer.q) find();
+    else show(viewer.cur + (e.shiftKey ? -1 : 1));
+  });
+  function renderSections(doc, label) {
+    viewer.parts = doc.sections.map((s) => {
+      const box = node('section', 'sec'), p = node('p', '', s.text);
+      if (s.label) box.append(node('h3', '', s.label));
+      box.append(p);
+      return { box, p, text: s.text, label: s.label };
+    });
+    const body = $('v-body');
+    body.replaceChildren(...viewer.parts.map((s) => s.box));
+    if (!viewer.parts.length) body.replaceChildren(node('p', 'status', 'No text was read from this document.'));
+    const at = label && viewer.parts.find((s) => s.label === label);
+    if (at) { at.box.classList.add('at'); at.box.scrollIntoView({ block: 'start' }); }
+    else body.scrollTop = 0;
+  }
+  async function openDoc(docId, label) {
+    const w = state.current;
+    const d = w.documents.find((x) => String(x.id) === String(docId));
+    if (!d) { toast('That document is not in this workspace any more.'); setHash(null); viewDlg.close(); return; }
+    const seq = ++viewer.seq;
+    if (!viewDlg.open) { viewer.opener = document.activeElement; viewDlg.showModal(); }
+    viewer.docId = d.id;
+    setHash(d.id, label);
+    $('v-title').textContent = d.name;
+    const file = wsUrl(w.id, '/documents/' + enc(d.id) + '/file');
+    $('v-open').href = file; $('v-open').hidden = !/\.pdf$/i.test(d.name); // the server sends other kinds as a download
+    $('v-download').href = file; $('v-download').download = d.name;
+    $('v-q').value = ''; viewer.q = ''; $('v-count').textContent = ''; viewer.parts = []; viewer.marks = [];
+    $('v-body').replaceChildren(node('p', 'status', 'Loading…'));
+    try {
+      const doc = await call(wsUrl(w.id, '/documents/' + enc(d.id)));
+      if (seq === viewer.seq) renderSections(doc, label);
+    } catch (err) {
+      if (seq === viewer.seq) $('v-body').replaceChildren(node('p', 'status err', err.message));
+    }
+  }
+  viewDlg.addEventListener('close', () => {
+    viewer.seq++; // a load still running is dropped
+    clearTimeout(viewer.timer);
+    if (!viewer.skip && state.current) setHash(null);
+    viewer.skip = false;
+    // the row may have been redrawn meanwhile (an upload finished): fall back to the same document's button
+    const back = viewer.opener?.isConnected ? viewer.opener
+      : document.querySelector('.doc-link[data-doc="' + CSS.escape(String(viewer.docId)) + '"]');
+    back?.focus();
+  });
+
+  /* ── routing: #<id> opens a workspace, #<id>/doc/<doc>?label=… also a document, no hash shows the list ── */
+  const dec = (s) => { try { return decodeURIComponent(s); } catch { return ''; } };
+  async function paint() {
+    const [path, query = ''] = location.hash.slice(1).split('?');
+    const [rawId, rawDoc] = path.split('/doc/');
+    const id = dec(rawId);
+    const known = id && state.list.some((w) => w.id === id);
+    if (viewDlg.open && !(known && rawDoc)) { viewer.skip = true; viewDlg.close(); }
+    $('list').hidden = !!known; $('edit').hidden = !known;
+    if (known) {
+      if (state.current?.id !== id) { $('queue').replaceChildren(); $('hits').replaceChildren(); status($('try-status'), ''); }
+      state.current = await call(wsUrl(id));
+      renderDetail();
+      if (rawDoc) await openDoc(dec(rawDoc), new URLSearchParams(query).get('label') || '');
+    } else { state.current = null; renderList(); }
+  }
+  window.onhashchange = () => { paint().catch((x) => toast(x.message)); window.scrollTo(0, 0); };
+  (async () => {
+    const me = await authReady;
+    state.admin = me.role === 'admin';
+    document.body.classList.toggle('admin', state.admin);
+    for (const el of [$('d-name'), $('d-instructions')]) el.readOnly = !state.admin;
+    await loadList();
+    await paint();
+    $('app').hidden = false;
+  })().catch((x) => toast(x.message));
+})();
+</script>
+</body>
+</html>

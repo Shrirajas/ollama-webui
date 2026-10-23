@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<script src="/auth.js"></script>
+<title>Fastshot — Databases</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,100..900&display=block" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+[hidden]{display:none!important}
+:root{color-scheme:dark;--line:rgba(214,228,255,.10);--soft:rgba(255,255,255,.06);--text:#ECECEF;--muted:#98999C;--dim:#77787B;--accent:#F49D70;--err:#FBBC94;--ok:#8FD3A8}
+body{min-height:100vh;background:#0a0d12;color:var(--text);font:14px/1.5 Inter,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer;background:none;border:0}
+a{color:inherit;text-decoration:none}
+:focus-visible{outline:2px solid #F8B285;outline-offset:2px;border-radius:6px}
+/* only admins change connections; the server refuses anyone else anyway */
+body:not(.admin) [data-admin]{display:none!important}
+.wrap{max-width:1100px;margin:0 auto;padding:18px 20px 64px}
+.head{display:flex;align-items:center;gap:8px;margin:10px 2px 14px;font-size:18px}
+.head h1{font-size:inherit;font-weight:500}
+.head .btn{margin-left:auto}
+.count{font-size:12px;color:var(--muted);background:var(--soft);border-radius:999px;padding:1px 9px}
+.search{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:10px;background:var(--soft);margin-bottom:8px}
+.search svg{width:14px;height:14px;color:var(--dim);flex:none}
+.search input{flex:1;min-width:0;background:none;border:0;outline:0}
+.btn{padding:6px 12px;border-radius:9px;background:rgba(255,255,255,.08);border:1px solid var(--line);font-size:13px;white-space:nowrap}
+.btn:hover{background:rgba(255,255,255,.13)}
+.btn.go{background:linear-gradient(163deg,#FBBC94,#F49D70 46%,#E88654);color:#1d1d20;font-weight:500;border:0}
+.btn:disabled{opacity:.55;cursor:default}
+.hint{font-size:12px;color:var(--dim)}
+/* connection list, as the Tools tab's list */
+#rows{list-style:none}
+#rows li{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:8px 10px;border-radius:12px}
+#rows li:hover{background:rgba(255,255,255,.025)}
+#rows .text{flex:1;min-width:0;display:grid}
+#rows .sub{font-size:12px;color:var(--dim);overflow-wrap:anywhere}
+.icon{width:28px;height:28px;display:grid;place-items:center;border-radius:8px;color:var(--dim);flex:none}
+.icon:hover{color:var(--text);background:var(--soft)}
+.icon.del:hover{color:var(--err)}
+.icon svg{width:15px;height:15px}
+.tables{flex-basis:100%;display:flex;flex-wrap:wrap;gap:6px}
+.tables:empty{display:none}
+.tables span{padding:1px 9px;border-radius:999px;font-size:12px;background:var(--soft);color:#D5D5D8}
+.tables i{font-style:normal;color:var(--dim);margin-left:5px}
+.none{padding:26px 10px;color:var(--dim);text-align:center}
+section.part{display:grid;gap:8px;margin-top:26px;padding-top:14px;border-top:1px solid var(--soft)}
+section.part h2{font-size:15px;font-weight:500}
+.rules{display:grid;gap:4px;font-size:12.5px;color:var(--muted);padding-left:18px}
+#toast{position:fixed;right:18px;bottom:18px;z-index:90;display:grid;gap:8px}
+#toast div{padding:9px 14px;border-radius:10px;background:#1b1e25;border:1px solid var(--line);box-shadow:0 10px 28px rgba(0,0,0,.4);max-width:520px}
+#toast .err{color:var(--err)}#toast .ok{color:var(--ok)}
+/* the form, in the Users tab's dialog */
+dialog{margin:auto;width:min(560px,calc(100vw - 32px));border:1px solid var(--line);border-radius:16px;background:#14171d;color:var(--text);padding:0}
+dialog::backdrop{background:rgba(0,0,0,.6)}
+dialog form{padding:20px;display:grid;gap:12px}
+dialog h2{font-size:16px;font-weight:500}
+.grid{display:grid;grid-template-columns:repeat(6,1fr);gap:12px}
+.grid>label{grid-column:span 3;min-width:0}
+.grid>.wide{grid-column:span 6}
+.grid>.port{grid-column:span 2}
+.grid>.host{grid-column:span 4}
+@media (max-width:520px){.grid>label{grid-column:span 6!important}}
+dialog label{display:grid;gap:5px;font-size:12.5px;color:var(--muted)}
+dialog label input,dialog label select{height:36px;padding:0 10px;border-radius:9px;background:#1f232b;border:1px solid var(--line);color:var(--text);width:100%}
+dialog label.check{display:flex;align-items:center;gap:8px}
+dialog label.check input{height:auto;width:auto}
+.status{font-size:13px;color:var(--muted);min-height:1.3em}
+.status.err{color:var(--err)} .status.ok{color:var(--ok)}
+.row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+</style>
+</head>
+<body>
+<div class="wrap" id="app" hidden>
+  <div class="head"><h1>Databases</h1><span class="count" id="count">0</span><button class="btn go" id="add" data-admin>+ New connection</button></div>
+  <label class="search">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+    <input id="q" type="search" placeholder="Search Databases" aria-label="Search databases">
+  </label>
+  <p class="hint" style="margin:0 2px 8px">Pick a database in the chat's model menu and ask about its data. A model on this machine looks at the tables and runs read-only queries to answer.</p>
+  <ul id="rows"></ul>
+  <div class="none" id="none" hidden>No databases found<br><span class="hint" data-admin>Add one with “New connection”.</span></div>
+
+  <section class="part">
+    <h2>How it is kept safe</h2>
+    <ul class="rules">
+      <li>Only queries that read are run. Anything that could change the database is refused before it is sent, and the connection itself is opened read-only.</li>
+      <li>Only models on this machine are used. Rows never go to a cloud model.</li>
+      <li>Passwords stay on the server. They are never sent back to this page.</li>
+      <li data-admin>Still, give the app a database user that can only read.</li>
+    </ul>
+  </section>
+</div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<dialog id="dlg">
+  <form id="form" autocomplete="off">
+    <h2 id="form-title">New connection</h2>
+    <div class="grid">
+      <label>Name<input id="name" placeholder="sales-db" required></label>
+      <label>Kind<select id="engine"></select></label>
+      <label class="wide" data-for="sqlite">SQLite file on this machine<input id="path" placeholder="/home/me/data/shop.db"></label>
+      <label class="host" data-for="server">Host<input id="host" placeholder="127.0.0.1"></label>
+      <label class="port" data-for="server">Port<input id="port" inputmode="numeric" placeholder="5432"></label>
+      <label data-for="server">User<input id="user" placeholder="readonly_user"></label>
+      <label data-for="server">Password<input id="password" type="password" autocomplete="new-password"></label>
+      <label data-for="server">Database<input id="database" placeholder="sales"></label>
+      <label data-for="postgresql">Schema<input id="schema" placeholder="public"></label>
+      <label class="wide check" data-for="server"><input type="checkbox" id="ssl"> Encrypt the connection (SSL), without checking the server's certificate</label>
+    </div>
+    <p class="hint" id="driver" hidden></p>
+    <div class="status" id="status" role="alert"></div>
+    <div class="row"><button type="button" class="btn" data-close>Cancel</button><button type="button" class="btn" id="test">Test</button><button type="submit" class="btn go" id="save">Save</button></div>
+  </form>
+</dialog>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const node = (tag, cls, text) => {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  };
+  const PORTS = { postgresql: '5432', mysql: '3306' };
+  const ICON = {
+    tables: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10"/></svg>',
+    edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>',
+    del: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
+  };
+  const state = { connections: [], engines: [], editing: null, admin: false };
+  const toast = (t, ok) => { const d = node('div', ok ? 'ok' : 'err', t); d.onclick = () => d.remove(); $('toast').append(d); setTimeout(() => d.remove(), ok ? 4000 : 15000); };
+  function status(text, kind) { $('status').className = 'status' + (kind ? ' ' + kind : ''); $('status').textContent = text || ''; }
+
+  async function call(path, options) {
+    let res;
+    try {
+      res = await fetch(path, options);
+    } catch {
+      throw new Error('The backend is not reachable.');
+    }
+    if (res.status === 401) { location.replace('/login.html'); throw new Error('Signed out.'); }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'Request failed (' + res.status + ')');
+    return data;
+  }
+  const about = (c) => c.engine === 'sqlite' ? c.path
+    : c.user + '@' + c.host + (c.port ? ':' + c.port : '') + '/' + c.database + (c.schema ? ' · schema ' + c.schema : '');
+
+  /* ── The list ── */
+  async function load() {
+    try {
+      const data = await call('/api/sql/connections');
+      state.connections = data.connections;
+      state.engines = data.engines;
+    } catch (err) {
+      toast(err.message);
+    }
+    renderEngines();
+    renderList();
+  }
+
+  function renderList() {
+    const q = $('q').value.trim().toLowerCase();
+    const shown = state.connections.filter((c) => !q || [c.id, c.label, state.admin ? about(c) : ''].some((s) => (s || '').toLowerCase().includes(q)));
+    $('count').textContent = state.connections.length;
+    $('none').hidden = shown.length > 0;
+    $('rows').replaceChildren(...shown.map((c) => {
+      const li = node('li');
+      const text = node('div', 'text');
+      text.append(node('span', '', c.id), node('span', 'sub', c.label + (state.admin ? ' · ' + about(c) : '')));
+      li.append(text);
+      if (!state.admin) return li;
+      const pills = node('div', 'tables');
+      const mk = (icon, label, fn) => {
+        const b = node('button', 'icon' + (icon === 'del' ? ' del' : ''));
+        b.type = 'button'; b.innerHTML = ICON[icon]; b.title = label; b.setAttribute('aria-label', label + ' ' + c.id);
+        b.onclick = fn; li.append(b);
+      };
+      mk('tables', 'Tables', async () => {
+        pills.replaceChildren(node('span', '', 'Reading…'));
+        try {
+          const data = await call('/api/sql/connections/' + encodeURIComponent(c.id) + '/tables');
+          pills.replaceChildren();
+          if (!data.tables.length) pills.append(node('span', '', 'No tables'));
+          for (const t of data.tables) {
+            const pill = node('span', '', t.name);
+            if (!/table/i.test(t.type)) pill.append(node('i', '', t.type.toLowerCase()));
+            pills.append(pill);
+          }
+        } catch (err) {
+          pills.replaceChildren(node('span', '', err.message));
+        }
+      });
+      mk('edit', 'Edit', () => openForm(c));
+      mk('del', 'Delete', async () => {
+        if (!confirm('Remove the connection "' + c.id + '"?\n\nThe database itself is not touched.')) return;
+        try {
+          await call('/api/sql/connections/' + encodeURIComponent(c.id), { method: 'DELETE' });
+          toast('Removed ' + c.id, true);
+          await load();
+        } catch (err) {
+          toast(err.message);
+        }
+      });
+      li.append(pills);
+      return li;
+    }));
+  }
+  $('q').oninput = renderList;
+
+  /* ── The form ── */
+  function renderEngines() {
+    const select = $('engine');
+    const was = select.value;
+    select.replaceChildren();
+    for (const e of state.engines) {
+      const opt = node('option', '', e.label + (e.missing ? ' (needs ' + e.missing + ')' : ''));
+      opt.value = e.id;
+      select.append(opt);
+    }
+    if (was && state.engines.some((e) => e.id === was)) select.value = was;
+    else if (state.engines.some((e) => e.id === 'postgresql')) select.value = 'postgresql';
+    showFields();
+  }
+  function showFields() {
+    const engine = $('engine').value;
+    document.querySelectorAll('[data-for]').forEach((el) => {
+      const f = el.dataset.for;
+      el.hidden = !(f === engine || (f === 'server' && engine && engine !== 'sqlite'));
+    });
+    $('port').placeholder = PORTS[engine] || '';
+    const e = state.engines.find((x) => x.id === engine);
+    $('driver').hidden = !(e && e.missing);
+    if (e && e.missing) {
+      $('driver').textContent = e.label + ' needs the Python package ' + e.missing
+        + ' on the server: pip install -r requirements.txt, then restart.';
+    }
+  }
+  $('engine').addEventListener('change', showFields);
+
+  function form() {
+    const value = (id) => $(id).value.trim();
+    return {
+      name: value('name'), engine: $('engine').value, path: value('path'),
+      host: value('host'), port: value('port') || null, user: value('user'), password: $('password').value,
+      database: value('database'), schema: value('schema'), ssl: $('ssl').checked,
+      original_id: state.editing,
+    };
+  }
+  function openForm(c) {
+    state.editing = c ? c.id : null;
+    $('form').reset();
+    renderEngines();
+    $('form-title').textContent = c ? 'Edit ' + c.id : 'New connection';
+    $('password').placeholder = c && c.password ? 'Unchanged' : '';
+    if (c) {
+      $('name').value = c.id;
+      $('engine').value = c.engine;
+      for (const id of ['path', 'host', 'user', 'database', 'schema']) $(id).value = c[id] || '';
+      $('port').value = c.port || '';
+      $('ssl').checked = !!c.ssl;
+      showFields();
+    }
+    status('');
+    $('dlg').showModal();
+  }
+  $('add').onclick = () => openForm(null);
+  for (const b of document.querySelectorAll('[data-close]')) b.onclick = () => b.closest('dialog').close();
+
+  async function submit(save) {
+    const body = form();
+    if (!body.name) { status('Give the connection a name.', 'err'); $('name').focus(); return; }
+    $('test').disabled = $('save').disabled = true;
+    status(save ? 'Connecting, then saving…' : 'Connecting…');
+    try {
+      const data = await call('/api/sql/connections' + (save ? '' : '/test'), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      });
+      if (save) {
+        $('dlg').close();
+        toast('Saved "' + data.id + '". Pick it in the chat\'s model menu.', true);
+        await load();
+      } else {
+        status('It works: connected to the ' + data.about + '.', 'ok');
+      }
+    } catch (err) {
+      status(err.message, 'err');
+    } finally {
+      $('test').disabled = $('save').disabled = false;
+    }
+  }
+  $('test').addEventListener('click', () => submit(false));
+  $('form').addEventListener('submit', (e) => { e.preventDefault(); submit(true); });
+
+  (async () => {
+    const me = await authReady;
+    state.admin = me.role === 'admin';
+    document.body.classList.toggle('admin', state.admin);
+    await load();
+    $('app').hidden = false;
+  })().catch((x) => toast(x.message));
+})();
+</script>
+<style>.pwbox{position:relative;display:block}.pwbox input{width:100%;box-sizing:border-box;padding-right:40px}.pweye{position:absolute;right:6px;bottom:6px;background:none;border:0;cursor:pointer;font-size:16px;opacity:.7;padding:4px 6px}.pweye:hover{opacity:1}</style>
+<script>
+// An eye button on every password box, as on the Users tab: press to show it, press again to hide it.
+function addEyes(root){(root||document).querySelectorAll('input[type=password]:not([data-eye])').forEach(function(i){
+  i.dataset.eye=1;var w=document.createElement('span');w.className='pwbox';i.parentNode.insertBefore(w,i);w.appendChild(i);
+  var b=document.createElement('button');b.type='button';b.className='pweye';b.title='Show password';b.textContent='\u{1F441}';
+  b.onclick=function(){var s=i.type==='password';i.type=s?'text':'password';b.textContent=s?'\u{1F648}':'\u{1F441}';b.title=s?'Hide password':'Show password'};
+  w.appendChild(b)})}
+addEyes();
+</script>
+</body>
+</html>

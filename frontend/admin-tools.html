@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<script src="/auth.js"></script>
+<title>Fastshot — Admin Tools</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,100..900&display=block" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+[hidden]{display:none!important}
+:root{color-scheme:dark;--line:rgba(214,228,255,.10);--soft:rgba(255,255,255,.06);--text:#ECECEF;--muted:#98999C;--dim:#77787B;--accent:#F49D70;--err:#FBBC94;--ok:#8FD3A8}
+body{min-height:100vh;background:#0a0d12;color:var(--text);font:14px/1.5 Inter,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+button,input,textarea,select{font:inherit;color:inherit}
+button{cursor:pointer;background:none;border:0}
+a{color:inherit;text-decoration:none}
+:focus-visible{outline:2px solid #F8B285;outline-offset:2px;border-radius:6px}
+.wrap{max-width:1100px;margin:0 auto;padding:18px 20px 64px}
+/* top tabs, as in Open WebUI's admin layout */
+.tabs{display:flex;gap:14px;padding:6px 2px 10px;font-size:14px}
+.tabs a{color:var(--dim);padding:2px 2px}
+.tabs a[aria-current=page]{color:var(--text)}
+.head{display:flex;align-items:center;gap:8px;margin:10px 2px 14px;font-size:18px}
+.head h1{font-size:inherit;font-weight:500}
+.head .btn{margin-left:auto}
+.count{font-size:12px;color:var(--muted);background:var(--soft);border-radius:999px;padding:1px 9px}
+.search{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:10px;background:var(--soft);margin-bottom:8px}
+.search svg{width:14px;height:14px;color:var(--dim);flex:none}
+.search input{flex:1;min-width:0;background:none;border:0;outline:0}
+.btn{padding:6px 12px;border-radius:9px;background:rgba(255,255,255,.08);border:1px solid var(--line);font-size:13px}
+.btn:hover{background:rgba(255,255,255,.13)}
+.btn.go{background:linear-gradient(163deg,#FBBC94,#F49D70 46%,#E88654);color:#1d1d20;font-weight:500;border:0}
+.btn:disabled{opacity:.55;cursor:default}
+.hint{font-size:12px;color:var(--dim)}
+.warn{font-size:12.5px;color:var(--err);margin:0 2px 10px}
+/* tool list, as in Open WebUI's Workspace -> Tools */
+#rows{list-style:none}
+#rows li{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:12px}
+#rows li:hover{background:rgba(255,255,255,.025)}
+#rows a{flex:1;min-width:0;display:grid}
+#rows .sub{font-size:12px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.off a{opacity:.5}
+.del{width:28px;height:28px;display:grid;place-items:center;border-radius:8px;color:var(--dim);flex:none}
+.del:hover{color:var(--err);background:var(--soft)}
+.del svg{width:15px;height:15px}
+.none{padding:26px 10px;color:var(--dim);text-align:center}
+/* switch: Open WebUI's 28x16 pill */
+.sw{position:relative;width:28px;height:16px;border-radius:999px;background:#3a3d44;flex:none;transition:background .15s}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:#8b8d93;transition:left .15s,background .15s}
+.sw[aria-checked=true]{background:var(--text)}
+.sw[aria-checked=true]::after{left:14px;background:#0a0d12}
+/* editor */
+.back{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:13px;margin:6px 2px 4px}
+.back:hover{color:var(--text)}
+.title{display:flex;align-items:center;gap:10px;margin:6px 2px 16px}
+.title h1{font-size:18px;font-weight:500;flex:1}
+.title label{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+form{display:grid;gap:14px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+@media (max-width:640px){.two{grid-template-columns:1fr}}
+.lbl{display:grid;gap:5px;font-size:12.5px;color:var(--muted)}
+.lbl b{font-weight:500;color:var(--text);font-size:13px}
+.lbl.check{display:flex;align-items:center;gap:8px}
+input:not([type=checkbox]),textarea,select{padding:8px 10px;border-radius:9px;background:#1f232b;border:1px solid var(--line);color:var(--text);width:100%}
+input:disabled{opacity:.6}
+#t-code{min-height:min(62vh,640px);resize:vertical;font:12.5px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;tab-size:4;white-space:pre;overflow:auto}
+.actions{display:flex;gap:8px;align-items:center}
+section.valves{display:grid;gap:14px;margin-top:26px;padding-top:14px;border-top:1px solid var(--soft)}
+section.valves h2{font-size:15px;font-weight:500}
+#vfields{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px 22px}
+#toast{position:fixed;right:18px;bottom:18px;z-index:90;display:grid;gap:8px}
+#toast div{padding:9px 14px;border-radius:10px;background:#1b1e25;border:1px solid var(--line);box-shadow:0 10px 28px rgba(0,0,0,.4);max-width:520px;white-space:pre-wrap}
+#toast .err{color:var(--err)}#toast .ok{color:var(--ok)}
+</style>
+</head>
+<body>
+<div class="wrap" id="app" hidden>
+  <nav class="tabs" aria-label="Admin"><a href="/admin.html">Users</a><a href="/admin-models.html">Models</a><a href="/admin-tools.html" aria-current="page">Tools</a><a href="/admin-code.html">Code</a><a href="/admin-features.html">Features</a></nav>
+
+  <section id="list">
+    <div class="head"><h1>Tools</h1><span class="count" id="count">0</span><a class="btn go" href="#new">+ New tool</a></div>
+    <label class="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      <input id="q" type="search" placeholder="Search Tools" aria-label="Search tools">
+    </label>
+    <p class="hint" style="margin:0 2px 8px">A tool is Python code that a model can call while it answers. A tool switched off is gone from every chat and is never run. Pick a model's default tools in Models.</p>
+    <ul id="rows"></ul>
+    <div class="none" id="none" hidden>No tools found<br><span class="hint">Add one with “New tool”.</span></div>
+  </section>
+
+  <section id="edit" hidden>
+    <a class="back" href="#">‹ Tools</a>
+    <div class="title">
+      <h1 id="heading"></h1>
+      <label id="state" hidden><span id="state-lbl">Enabled</span><button type="button" class="sw" role="switch" id="enabled" aria-labelledby="state-lbl"></button></label>
+    </div>
+    <p class="warn">Tool code runs inside the server with full access to it: its files, its network and every user's data. Only admins you trust with the server should write tools.</p>
+    <form id="f">
+      <div class="two">
+        <label class="lbl"><b>Name</b><input id="t-name" required maxlength="100" placeholder="Toolkit Name"></label>
+        <label class="lbl"><b>ID</b><input id="t-id" required maxlength="100" pattern="(?!new$)[A-Za-z0-9_]+" title="Letters, digits and underscores (not “new”: that is this page's address for a new tool)" placeholder="toolkit_id"><span class="hint">Letters, digits and _ only. Cannot be changed later.</span></label>
+      </div>
+      <label class="lbl"><b>Description</b><input id="t-desc" required maxlength="500" placeholder="What these tools do (shown in the chat's Tools menu)"></label>
+      <label class="lbl"><b>Code</b><textarea id="t-code" wrap="off" spellcheck="false" required></textarea>
+        <span class="hint">A <code>class Tools:</code>. Each method with type hints and a docstring becomes a tool the model can call. Tab indents; press Esc, then Tab, to leave the box. Ctrl+S saves.</span></label>
+      <div class="actions"><button class="btn go" type="submit" id="save">Save</button></div>
+    </form>
+
+    <section class="valves" id="valves" hidden>
+      <h2>Valves</h2>
+      <p class="hint">Settings the code reads as <code>self.valves</code> (its <code>class Valves</code>). Empty = its default.</p>
+      <form id="vf"><div id="vfields"></div><div class="actions"><button class="btn go" type="submit">Save valves</button></div></form>
+    </section>
+  </section>
+</div>
+<div id="toast" role="status" aria-live="polite"></div>
+<script>
+const $ = (id) => document.getElementById(id);
+const BASE = '/api/admin/tools/';
+/* Open WebUI's starting point for a new tool (ToolkitEditor.svelte), without its weather example: that one
+   needs the requests package and an API key. */
+const BOILERPLATE = `import ast
+import operator
+from datetime import datetime
+from pydantic import BaseModel, Field
+
+# The equation comes from the model, so it is read as arithmetic only: no names, calls or **.
+_OPS = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul, ast.Div: operator.truediv,
+        ast.FloorDiv: operator.floordiv, ast.Mod: operator.mod, ast.USub: operator.neg, ast.UAdd: operator.pos}
+
+
+def _calc(node):
+    if isinstance(node, ast.Constant) and type(node.value) in (int, float):
+        return node.value
+    if isinstance(node, ast.UnaryOp) and type(node.op) in _OPS:
+        return _OPS[type(node.op)](_calc(node.operand))
+    if isinstance(node, ast.BinOp) and type(node.op) in _OPS:
+        return _OPS[type(node.op)](_calc(node.left), _calc(node.right))
+    raise ValueError("not arithmetic")
+
+
+class Tools:
+    def __init__(self):
+        pass
+
+    # Add your custom tools using pure Python code here, make sure to add type hints and descriptions
+
+    def get_user_name_and_email_and_id(self, __user__: dict = {}) -> str:
+        """
+        Get the user name, Email and ID from the user object.
+        """
+
+        # Do not include a description for __user__ as it should not be shown in the tool's specification
+        # The session user object will be passed as a parameter when the function is called
+
+        result = ""
+
+        if "name" in __user__:
+            result += f"User: {__user__['name']}"
+        if "id" in __user__:
+            result += f" (ID: {__user__['id']})"
+        if "email" in __user__:
+            result += f" (Email: {__user__['email']})"
+
+        if result == "":
+            result = "User: Unknown"
+
+        return result
+
+    def get_current_time(self) -> str:
+        """
+        Get the current time in a more human-readable format.
+        """
+
+        now = datetime.now()
+        current_time = now.strftime("%I:%M:%S %p")  # Using 12-hour format with AM/PM
+        current_date = now.strftime(
+            "%A, %B %d, %Y"
+        )  # Full weekday, month name, day, and year
+
+        return f"Current Date and Time = {current_date}, {current_time}"
+
+    def calculator(
+        self,
+        equation: str = Field(
+            ..., description="The mathematical equation to calculate."
+        ),
+    ) -> str:
+        """
+        Calculate the result of an equation.
+        """
+
+        try:
+            result = _calc(ast.parse(equation, mode="eval").body)
+            return f"{equation} = {result}"
+        except Exception:
+            return "Invalid equation"
+`;
+let tools = [], current = null, idTyped = false;
+const toast = (t, ok) => { const d = document.createElement('div'); d.className = ok ? 'ok' : 'err'; d.textContent = t; d.onclick = () => d.remove(); $('toast').append(d); setTimeout(() => d.remove(), ok ? 4000 : 15000); };
+async function api(method, path, body) {
+  const r = await fetch(path, { method, headers: { 'Content-Type': 'application/json' }, body: body && JSON.stringify(body) });
+  if (r.status === 401) { location.replace('/'); throw new Error('Signed out.'); }
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(typeof j.detail === 'string' ? j.detail : Array.isArray(j.detail) ? j.detail.map((d) => d.msg).join('; ') : 'Error ' + r.status);
+  return j;
+}
+const url = (id, rest = '') => BASE + encodeURIComponent(id) + rest;
+const enabled = (t) => t.enabled !== false;
+const nameToId = (s) => s.trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '');
+
+/* ── list ── */
+function setSwitch(sw, t) {
+  sw.dataset.id = t.id; sw.setAttribute('aria-checked', enabled(t)); sw.title = enabled(t) ? 'Enabled' : 'Disabled';
+  sw.closest('li')?.classList.toggle('off', !enabled(t));
+}
+const mark = (t) => document.querySelectorAll('.sw').forEach((sw) => sw.dataset.id === t.id && setSwitch(sw, t));
+async function toggle(t) {
+  t.enabled = !enabled(t); mark(t);  // optimistic, as in Open WebUI
+  try { await api('PATCH', url(t.id, '/enabled'), { enabled: t.enabled }); toast(t.name + (t.enabled ? ' is on' : ' is off'), true); }
+  catch (x) { t.enabled = !t.enabled; mark(t); toast(x.message); }
+}
+async function remove(t) {
+  if (!confirm('Delete the tool "' + t.name + '"?\n\nChats can no longer use it. This cannot be undone.')) return;
+  try { await api('DELETE', url(t.id)); tools = tools.filter((x) => x !== t); renderList(); toast('Deleted ' + t.name, true); }
+  catch (x) { toast(x.message); }
+}
+function renderList() {
+  const q = $('q').value.trim().toLowerCase();
+  const shown = tools.filter((t) => !q || [t.name, t.id, t.meta?.description].some((s) => (s || '').toLowerCase().includes(q)));
+  $('count').textContent = shown.length;
+  $('none').hidden = shown.length > 0;
+  $('rows').replaceChildren(...shown.map((t) => {
+    const li = document.createElement('li'), a = document.createElement('a'), del = document.createElement('button'), sw = document.createElement('button');
+    a.href = '#' + encodeURIComponent(t.id);
+    a.innerHTML = '<span></span><span class="sub"></span>';
+    a.firstChild.textContent = t.name;
+    a.lastChild.textContent = [t.id, t.meta?.description].filter(Boolean).join(' · ');
+    del.type = 'button'; del.className = 'del'; del.title = 'Delete'; del.setAttribute('aria-label', 'Delete ' + t.name);
+    del.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>';
+    del.onclick = () => remove(t);
+    sw.type = 'button'; sw.className = 'sw'; sw.setAttribute('role', 'switch'); sw.setAttribute('aria-label', 'Enabled: ' + t.name);
+    sw.onclick = () => toggle(t);
+    li.append(a, del, sw);
+    setSwitch(sw, t);
+    return li;
+  }));
+}
+$('q').oninput = renderList;
+
+/* ── editor ── */
+function show(t) {
+  current = t;
+  $('heading').textContent = t ? t.name : 'New tool';
+  $('state').hidden = !t;
+  if (t) setSwitch($('enabled'), t);
+  $('t-name').value = t ? t.name : '';
+  $('t-id').value = t ? t.id : '';
+  $('t-id').disabled = !!t;
+  $('t-desc').value = t ? t.meta?.description || '' : '';
+  $('t-code').value = t ? t.content : BOILERPLATE;
+  idTyped = false;
+  $('valves').hidden = true;
+  if (t) renderValves(t.id).catch((x) => toast(x.message));
+}
+$('enabled').onclick = () => toggle(current);
+$('t-name').oninput = () => { if (!current && !idTyped) $('t-id').value = nameToId($('t-name').value); };
+$('t-id').oninput = () => (idTyped = true);
+/* Tab writes four spaces; Esc first lets the next Tab move focus on, so the box is no keyboard trap. */
+let tabOut = false;
+$('t-code').onkeydown = (e) => {
+  if (e.key === 'Escape') { tabOut = true; return; }
+  if (e.key !== 'Tab' || e.shiftKey || e.ctrlKey || e.altKey || e.metaKey || tabOut) { tabOut = false; return; }
+  e.preventDefault();
+  const t = e.target;
+  if (!document.execCommand('insertText', false, '    ')) t.setRangeText('    ', t.selectionStart, t.selectionEnd, 'end');
+};
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 's' && !$('edit').hidden) { e.preventDefault(); $('f').requestSubmit(); }
+});
+$('f').onsubmit = async (e) => {
+  e.preventDefault();
+  const body = { name: $('t-name').value.trim(), content: $('t-code').value, meta: { description: $('t-desc').value.trim() } };
+  $('save').disabled = true;
+  try {
+    if (current) {
+      const r = await api('POST', url(current.id, '/update'), body);
+      Object.assign(current, r);
+      toast('Saved ' + r.name, true);
+      show(current);
+    } else {
+      const r = await api('POST', BASE + 'create', { id: $('t-id').value.trim(), ...body });
+      tools.push(r);
+      toast('Created ' + r.name, true);
+      location.hash = '#' + encodeURIComponent(r.id);
+    }
+  } catch (x) { toast(x.message); }
+  finally { $('save').disabled = false; }
+};
+
+/* ── valves: a form from the code's Valves JSON schema ── */
+const typeOf = (p) => p.type || (p.anyOf || []).map((a) => a.type).find((t) => t && t !== 'null') || 'string';
+async function renderValves(id) {
+  const [spec, saved] = await Promise.all([api('GET', url(id, '/valves/spec')), api('GET', url(id, '/valves'))]);
+  if (!spec || !spec.properties || current?.id !== id) return;  // another tool was opened meanwhile
+  const values = saved || {};
+  $('vfields').replaceChildren(...Object.entries(spec.properties).map(([k, p]) => {
+    const type = typeOf(p), lab = document.createElement('label'), b = document.createElement('b');
+    lab.className = type === 'boolean' ? 'lbl check' : 'lbl';
+    b.textContent = p.title || k;
+    let input;
+    if (p.enum) {
+      input = document.createElement('select');
+      input.append(...p.enum.map((v) => new Option(String(v), String(v))));
+    } else {
+      input = document.createElement('input');
+      input.type = type === 'boolean' ? 'checkbox' : type === 'number' || type === 'integer' ? 'number' : 'text';
+      if (input.type === 'number') input.step = type === 'integer' ? '1' : 'any';
+    }
+    input.dataset.k = k; input.dataset.t = type;
+    const v = values[k] ?? p.default;
+    if (input.type === 'checkbox') input.checked = !!v;
+    else input.value = v == null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v);
+    if (input.type === 'checkbox') lab.append(input, b); else lab.append(b, input);
+    if (p.description) { const h = document.createElement('span'); h.className = 'hint'; h.textContent = p.description; lab.append(h); }
+    return lab;
+  }));
+  $('valves').hidden = false;
+}
+$('vf').onsubmit = async (e) => {
+  e.preventDefault();
+  const body = {};
+  try {
+    for (const input of $('vfields').querySelectorAll('[data-k]')) {
+      const { k, t } = input.dataset;
+      if (input.type === 'checkbox') body[k] = input.checked;
+      else if (input.value === '') continue;  // left out, so the code's default applies
+      else if (t === 'number' || t === 'integer') body[k] = Number(input.value);
+      else if (t === 'array' || t === 'object') body[k] = JSON.parse(input.value);
+      else body[k] = input.value;
+    }
+    await api('POST', url(current.id, '/valves/update'), body);
+    toast('Saved the valves of ' + current.name, true);
+    await renderValves(current.id);
+  } catch (x) { toast(x instanceof SyntaxError ? 'A list or object valve is not valid JSON: ' + x.message : x.message); }
+};
+
+/* ── routing: #<id> opens a tool, #new a new one (so the id field refuses "new"); Back returns to the list ── */
+async function paint() {
+  const id = decodeURIComponent(location.hash.slice(1)), known = tools.find((t) => t.id === id);
+  const editing = id === 'new' || !!known;
+  $('list').hidden = editing; $('edit').hidden = !editing;
+  if (id === 'new') show(null);
+  else if (known) { const t = await api('GET', url(id)); Object.assign(known, t); show(known); }
+  else { current = null; renderList(); }
+}
+window.onhashchange = () => { paint().catch((x) => toast(x.message)); window.scrollTo(0, 0); };
+(async () => {
+  const me = await authReady;
+  if (me.role !== 'admin') return location.replace('/');
+  tools = await api('GET', BASE.slice(0, -1));
+  await paint();
+  $('app').hidden = false;
+})().catch((x) => toast(x.message));
+</script>
+</body>
+</html>

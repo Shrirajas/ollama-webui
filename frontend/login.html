@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fastshot — Sign in</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,100..900&display=block" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+button,input{font:inherit;color:inherit;border:0}
+:root{--glass:rgba(41,41,43,.955);--line:rgba(214,228,255,.14);--text:#ECECEF;--muted:#98999C;--accent:#F49D70;--err:#FBBC94}
+body{min-height:100vh;display:grid;place-items:center;padding:16px;background:#0a0d12;color:var(--text);
+  font-family:Inter,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+form{width:100%;max-width:360px;background:var(--glass);border:1px solid var(--line);border-radius:16px;padding:28px;display:grid;gap:14px}
+h1{font-size:20px;font-weight:600}
+p.sub{color:var(--muted);margin-top:-8px}
+label{display:grid;gap:6px;color:var(--muted);font-size:13px}
+input{background:rgba(255,255,255,.07);border-radius:10px;padding:10px 12px;color:var(--text)}
+:focus-visible{outline:2px solid #F8B285;outline-offset:2px}
+button{background:var(--accent);color:#1b1208;font-weight:600;border-radius:10px;padding:11px;cursor:pointer}
+button:disabled{opacity:.6;cursor:default}
+#err{color:var(--err);min-height:1.4em}
+</style>
+</head>
+<body>
+<form id="f">
+  <h1>Sign in</h1>
+  <p class="sub">Ask an admin if you do not have an account.</p>
+  <label>Email<input id="email" type="email" autocomplete="username" required autofocus></label>
+  <label>Password<input id="pw" type="password" autocomplete="current-password" required></label>
+  <div id="err" role="alert"></div>
+  <button id="go" type="submit">Sign in</button>
+</form>
+<script>
+// Only a path on this site is allowed as the place to go next (no open redirect).
+var next = new URLSearchParams(location.search).get('next') || '/';
+if (next[0] !== '/' || next[1] === '/' || next[1] === '\\') next = '/';
+fetch('/api/auth/me').then(function (r) { if (r.ok) location.replace(next); });
+document.getElementById('f').addEventListener('submit', function (e) {
+  e.preventDefault();
+  var go = document.getElementById('go'), err = document.getElementById('err');
+  go.disabled = true; err.textContent = '';
+  fetch('/api/auth/signin', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: document.getElementById('email').value, password: document.getElementById('pw').value })
+  }).then(function (r) {
+    if (r.ok) return location.replace(next);
+    return r.json().then(function (d) { err.textContent = d.detail || 'Could not sign in.'; go.disabled = false; });
+  }).catch(function () { err.textContent = 'Cannot reach the server.'; go.disabled = false; });
+});
+</script>
+<style>.pwbox{position:relative;display:block}.pwbox input{width:100%;box-sizing:border-box;padding-right:40px}.pweye{position:absolute;right:6px;bottom:6px;background:none;border:0;cursor:pointer;font-size:16px;opacity:.7;padding:4px 6px}.pweye:hover{opacity:1}</style>
+<script>
+// An eye button on every password box: press to show it, press again to hide it.
+function addEyes(root){(root||document).querySelectorAll('input[type=password]:not([data-eye])').forEach(function(i){
+  i.dataset.eye=1;var w=document.createElement('span');w.className='pwbox';i.parentNode.insertBefore(w,i);w.appendChild(i);
+  var b=document.createElement('button');b.type='button';b.className='pweye';b.title='Show password';b.textContent='\u{1F441}';
+  b.onclick=function(){var s=i.type==='password';i.type=s?'text':'password';b.textContent=s?'\u{1F648}':'\u{1F441}';b.title=s?'Hide password':'Show password'};
+  w.appendChild(b)})}
+addEyes();
+</script>
+</body>
+</html>

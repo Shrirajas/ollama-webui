@@ -22,12 +22,23 @@ class ModelEntry:
     available: bool = False
     vision: bool | None = None  # None = the server did not report capabilities
     thinking: bool = False  # the model reasons before it answers (Ollama capability "thinking")
+    tools: bool | None = None  # the model can call tools (Ollama capability "tools"); None = not reported
     configured: bool = False
     size: int | None = None
     parameter_size: str | None = None
     system: str = ""
     options: dict[str, Any] = field(default_factory=dict)
     provider: str = "ollama"  # "opencode" = answered in the cloud, not on this machine
+
+    @property
+    def budget(self) -> int:
+        """Tokens one request may hold, with a careful default when the config does not say."""
+        return int(self.options.get("num_ctx") or 4096)
+
+    @property
+    def local(self) -> bool:
+        """Answered on this machine (Ollama or llama-server), not in the cloud."""
+        return self.provider != OPENCODE
 
     def public(self) -> dict[str, Any]:
         data = asdict(self)
@@ -93,6 +104,7 @@ class Registry:
                         description=alias.description,
                         available=alias.model in cloud_models,
                         vision=False,
+                        tools=False,
                         configured=True,
                         provider=OPENCODE,
                     )
@@ -101,6 +113,7 @@ class Registry:
             tag = _find_tag(installed[alias.host], alias.model)
             caps = await self._caps(alias.host, tag) if tag else []
             vision = alias.vision if alias.vision is not None else ("vision" in caps if caps else None)
+            tools = alias.tools if alias.tools is not None else ("tools" in caps if caps else None)
             entries.append(
                 ModelEntry(
                     id=alias.id,
@@ -111,6 +124,7 @@ class Registry:
                     available=tag is not None,
                     vision=vision,
                     thinking="thinking" in caps,
+                    tools=tools,
                     configured=True,
                     size=tag.get("size") if tag else None,
                     parameter_size=(tag.get("details") or {}).get("parameter_size") if tag else None,
@@ -138,6 +152,7 @@ class Registry:
                             available=True,
                             vision="vision" in caps if caps else None,
                             thinking="thinking" in caps,
+                            tools="tools" in caps if caps else None,
                             size=tag.get("size"),
                             parameter_size=(tag.get("details") or {}).get("parameter_size"),
                             options=dict(self.config.default_options),

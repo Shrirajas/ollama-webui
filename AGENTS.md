@@ -11,6 +11,81 @@ back. With "Auto", a router sends each message to a light model, a reasoning
 model or a vision model on this machine, or, for questions about software, to
 OpenCode's free cloud models.
 
+The app runs on one of two model servers, chosen by `PIPELINE` in
+`backend/.env`:
+- **Ollama** (default, `ollama/`): Auto, OpenCode, every Ollama model.
+- **llama-server** (`PIPELINE=llamacpp`, `llamacpp/`): llama.cpp in Docker
+  with two models, `llama3.1:8b` and `gemma4:12b`, and Auto between them (Von/rules,
+  never OpenCode). Chat uses either; Documents, Word and Invoices use gemma4. Used on the production
+  server since 13 October 2026; see "Running the `12-llamacpp` branch" below.
+
+## Running the `12-llamacpp` branch on the server
+
+This branch adds a second pipeline, `llamacpp/` (package `llamacpp_pipeline`):
+the whole app answered by llama.cpp's `llama-server` instead of Ollama, with two
+models; Auto routes between them (`router:` block in
+`llamacpp/config/models.yaml`, no cloud). Chat: `llama3.1:8b` (default) or `gemma4:12b`.
+Documents page, Word tab and Invoices tab: `gemma4:12b`. `ollama/` is
+unchanged; with the switch off the app runs exactly as on `11-word` (Auto,
+OpenCode, Ollama models).
+
+- `llamacpp/llamacpp_pipeline/client.py` talks to llama-server's OpenAI-style
+  API and hands back Ollama's shapes, so the chat steps and the documents
+  services are used as they are. `registry.py` is Ollama's registry with that
+  client. `llamacpp/config/models.yaml` lists the models and which one the
+  documents and invoices use.
+- `llamacpp/server/start.sh` starts a container of its own,
+  `llama-server-webui` on `127.0.0.1:8101`, in router mode with the models in
+  `llamacpp/server/models.ini`. It reads Ollama's model files read-only. The
+  other `llama-server` container on this machine is not used or changed. The
+  container has no restart policy: after a reboot run `start.sh` again.
+- `backend/.env`: `LLAMACPP_API_KEY=<random>` (the container and the app use
+  it) and `PIPELINE=llamacpp`. Without that line: Ollama.
+- Check: `cd backend && python -m llamacpp_pipeline` lists both models as ready.
+- **Reply rendering** (`render` code in `frontend/index.html`, `paintBody`): Markdown by `marked`, code by
+  highlight.js, both copied into `frontend/vendor/` (committed; highlight.js is esbuild's bundle of
+  `highlight.js/lib/common.js` from the reference's `node_modules`). Raw HTML in a reply is shown as text. Each code
+  block has Open WebUI's bar (Collapse, Run, Copy), line numbers and the run output; under each finished reply is Open WebUI's button
+  row (`addActions`/`act`): edit, copy, read aloud (browser speech), info, good/bad (`rating` kept in the saved
+  message), continue and regenerate (newest reply only, `reply(history, prior)`), fork chat (new saved chat up to
+  that reply). Only the block still being written is rebuilt, so collapse state and Run output survive.
+- **Run button on python code blocks** (runs in the user's browser with Pyodide, not
+  on the server). Once per machine: `python scripts/fetch_pyodide.py` (fills
+  `frontend/pyodide/`, git-ignored). Admin Panel -> Code (`/api/code`, table
+  `app_setting` in `auth.db`) switches it on/off and sets the time limit. Details and
+  limits: `anaylze-code-and-routing.md`.
+
+Rules to keep:
+- **One model server on the GPU at a time.** llama-server held 14.7 of 16 GB
+  with both models at ctx 16384 (llama3.1:8b 5.9 GB, gemma4:12b with vision 8.7 GB).
+  With llama3.1:8b at 24576 (`models.ini` since then): 6.5 + 8.8 GB, 15.4 of 16 GB
+  used on the card (`nvidia-smi`, 16 October 2026).
+  Ollama and llama-server do not see each other's memory: a model loaded in
+  Ollama meanwhile fails with "CUDA out of memory" (seen with qwen-fast and
+  gemma4), and the other way round.
+- gemma4 runs with `think: false`: with thinking on, its reasoning filled the
+  16k context before a long document was written.
+- Each model's ctx-size is one pool shared by its slots (kv-unified). A new
+  ~14k-token Word job and an invoice page at the same moment come close to
+  gemma's 16384; if "Context size has been exceeded" shows up, raise gemma's
+  ctx-size (about 1.6 GB of the card is still free) or lower `parallel`, in
+  Admin Panel -> Models (see "Admin Panel -> Models" below).
+
+Measured on the server (RTX 4080 Super), 13 October 2026:
+- Chat: "hey" answered by llama3.1:8b in 0.1 s (with Auto on Ollama it went to
+  qwen-fast, because llama3.2:3b is not pulled here). 125 tokens/s alone; 8
+  chats at once all had their first word within 0.4 s, also while invoices
+  and a Word job ran on gemma.
+- Word tab, 7 invoice PDFs into one report: llama3.1:8b in 11.5 s dropped a
+  file, miscopied a total and repeated sections; gemma4 in 12 s had every
+  file and every figure right. Both got the sum of the totals wrong: a model's
+  arithmetic is not to be trusted. A scanned PDF is refused, as before.
+- Invoices: all 54 files of `test-images/` (two folders) read by gemma4 on
+  llama-server, no errors: 147 documents (45 invoices, 78 receipts, 24
+  payments), 240 sheet rows, 922 s, about 6.4 s a page, average confidence
+  0.92, 38 values marked to check. Not compared with Ollama's gemma4 on the
+  same files: both cannot be on the card at once.
+
 ## Running the `11-word` branch on the server
 
 This branch adds the **Word document** tab to the documents page: several
@@ -97,6 +172,317 @@ day); saved templates go to `backend/data/templates/` (kept). Neither is in git.
 What to test on this branch is listed under "Word documents page" below,
 in "Not done, check these on the server".
 
+## Chat attachments
+
+`POST /api/files` (`backend/app/routes.py`) keeps an attached file on the server and answers with an
+id (see "Big files" below; the text no longer comes back to the browser). It reads the text with `read_source` (`documents/document_engine/word/sources.py`, shared with the Word tab):
+PDF and Word as before; **Excel `.xlsx`/`.xlsm`** as one Markdown table per sheet (values
+Excel last calculated, first 2000 rows a sheet, dates without a time shown as dates);
+**CSV/TSV** decoded as UTF-8 (with or without BOM), UTF-16 or Windows-1252; other text as
+is. Old binary `.xls` and `.doc` are refused with a message to save them as `.xlsx` /
+`.docx` (reading `.xls` would need the `xlrd` package). Limit `workspaces.max_upload_mb` (50 MB), 5,000,000 characters of text (`MAX_CHARS` in `backend/app/workspaces/routes.py`).
+**Scanned PDFs** (no text layer) are no longer refused: `/api/files` answers with
+`images` (the first `MAX_SCAN_PAGES` = 8 pages as base64 JPEG, longest side `SCAN_SIDE`
+= 1400, made by the Invoices reader) and a `note`; the page attaches them as pictures, so
+Auto sends them to the vision model (gemma). The Word tab still refuses scans (it needs
+text). Test: `backend/tests/scan_route.py`. Reading quality on real scans is not judged yet.
+Checked with the real model: it answered from an attached `.xlsx` and `.csv`.
+
+## Users and login
+
+Every page and every `/api` route needs a signed-in user, except `/api/health`,
+`/api/auth/*`, `login.html` and `auth.js`. Code: `backend/app/auth/` (standard
+library only: SQLite file `backend/data/auth.db`, scrypt passwords, signed
+tokens, cookie `token`). Check without a server: `cd backend && python -m app.auth`.
+
+- **First admin:** `ADMIN_EMAIL` and `ADMIN_PASSWORD` in `backend/.env`; made at
+  startup only while there are no users (log: `Auth: first admin ... created`).
+  `AUTH_SECRET` signs the tokens; without it a random one is kept in
+  `backend/data/auth_secret`. `TOKEN_HOURS` (default 168) is how long a login lasts.
+- **Sign out ends the session on the server** (`POST /api/auth/signout` changes the user's
+  `session_stamp`), so a copied token stops working. It also ends that user's sessions in other browsers.
+- **More users:** admins only, through the admin page `/admin.html` (or `POST /api/auth/users`). There is no public signup. Roles: `admin`, `user`.
+- **Pages:** `frontend/auth.js` is the first script in each page's `<head>`; it
+  hides the page until `/api/auth/me` answers and sends everyone else to
+  `login.html`. After it, `await authReady` gives the user and `signOut()` signs out.
+  It also adds the name, Sign out and (admins) Admin links to the page header.
+- **New API routes** are protected by adding them to one of the routers in
+  `main.py` that already carry `dependencies=login`; admin-only routes use
+  `Depends(admin_user)`.
+- **Sidebar** (`frontend/sidebar.js`, added to every page by `auth.js`, modelled on
+  Open WebUI's): New Chat, search, links to Documents / Word / Invoices, the saved
+  chats grouped by date (click to go back to one; a ⋯ menu renames or deletes), and
+  the user menu (Admin Panel for admins, Sign out). On wide screens it pushes the page
+  right by 260 px (`html.sb-on`); on phones it is a drawer that starts closed.
+- **Saved chats:** `backend/app/chats.py`, table `chat` in the same `auth.db`, private
+  to each user (another user's id answers 404), deleted with the user. `/api/chats`
+  (list with `?q=` search, create, read, save, `/{id}/delete`). `index.html` saves
+  after every finished reply and opens a chat from `?c=<id>` (`window.Chat.open/reset`).
+  Pictures are not kept in a saved chat (file text and names are).
+- **Admin panel** (`/admin.html`): Open WebUI style Users tab with count, search,
+  sortable table, Add User (form or CSV: Name,Email,Password,Role) and Edit modals.
+  Tabs Users, Models (next section) and Code. Non-admins are redirected to the chat.
+- **Change password:** `POST /api/auth/password {current, new}` (any signed-in user;
+  8+ characters, must differ from the current one) and the "Change password" dialog in
+  the sidebar user menu. It ends the user's other sessions and re-issues this browser's
+  cookie. Not built: a forced change at first login, "forgot password" by email (an
+  admin can set a new one in the Admin Panel). Test: `backend/tests/browser_password.py`.
+- The first account made cannot be deleted, demoted or disabled. Full design and
+  the Open WebUI analysis it comes from: `anaylze.md`.
+
+## Admin Panel -> Models
+
+`/admin-models.html`, admins only, modelled on Open WebUI's Admin Settings -> Models
+and its "Advanced Params". A list with search and an on/off switch per model; a click
+opens the model's editor. Code: `backend/app/model_settings.py` (`/api/admin/models`),
+`backend/app/model_server.py` (`/api/admin/llama-server`),
+`llamacpp/llamacpp_pipeline/server_config.py` (reads and writes `models.ini`, restarts
+the container).
+
+- **On/off, for everyone.** A model that is off is not in anyone's chat picker (admins'
+  too), a chat that names it gets 403 "This model is turned off by an admin.", and Auto
+  sends its messages to a model that is on; with every model off the chat says so.
+  Stored as `enabled` in the model's row of table `model_setting` in `auth.db`
+  (missing = on). Chat only, like the settings below: the Documents, Word and Invoices
+  tabs keep using the model their `documents:` / `invoices:` block names, with their own
+  prompts.
+- **System prompt and Advanced Params,** each Default (the `models.yaml` value, shown in
+  grey) or Custom: the sampling options llama-server takes (temperature, top_p/k, min_p,
+  repeat penalty and window, presence/frequency penalty, mirostat, typical_p, max tokens
+  `num_predict`, seed, stop) and `think`. Ranges: `NUMBERS` in `model_settings.py`. Stored
+  as JSON in `model_setting`, laid over `models.yaml` on every reply: no restart.
+- **Server (llama-server only): Context Length and Parallel slots** of each model, which
+  are `ctx-size` and `parallel` in `llamacpp/server/models.ini`. The app's `num_ctx` (the
+  "too long" warning, the documents' share of the room) is read from `ctx-size`; it is no
+  longer kept by hand in `llamacpp/config/models.yaml`. One request can use the whole
+  ctx-size, but all slots of a model share it (kv-unified).
+- **"Save & restart llama-server"** writes `models.ini` (the old one stays as
+  `models.ini.bak`), runs `llamacpp/server/start.sh`, and waits until every model is
+  loaded (up to 4 minutes). Replies in progress are cut off. If a model does not load,
+  the old `models.ini` is put back, the container is started again, and the panel shows
+  the error with the last lines of `docker logs`. One restart at a time (409).
+- **Memory: both models must fit on the 16 GB card together.** Measured: llama3.1:8b
+  5.9 GB at ctx 16384, 6.5 GB at 24576, 7.1 GB at 32768; gemma4:12b with vision 8.7 GB
+  at 16384. Today's values (llama 24576 x 8 slots, gemma 16384 x 4) use 15.4 of 16 GB,
+  so there is under 1 GB left: about 0.6 GB per 8k more ctx for llama3.1:8b (q8_0
+  cache). After a change check `nvidia-smi`; a model that no longer fits fails to load
+  and the change is rolled back.
+- On Ollama (`PIPELINE` not `llamacpp`) the Server part is hidden; Ollama's context is
+  `num_ctx` in `ollama/config/models.yaml`.
+- Checks without a server or a model: `backend/tests/admin_models.py`,
+  `backend/tests/llama_server_config.py` (run from `backend/`).
+
+## Admin Panel -> Tools
+
+`/admin-tools.html`, admins only, a copy of Open WebUI's Workspace -> Tools. An admin writes a
+Python `class Tools:`; each public method becomes a function the chat model may call (native
+function calling). Code: `backend/app/tools.py` (loader, specs, routes), the loop in
+`chat_stream` (`ollama/ollama_pipeline/pipeline.py`), `tools=` in both clients.
+
+**Tool code runs inside the backend process, with everything the server can do** (files,
+`backend/.env`, `auth.db`, the network, the shell). Give the admin role only to people you trust
+with the server. That is why:
+- create, update, valves and the code itself are behind `admin_user` (the whole `/api/admin/tools`
+  router); nothing else reaches `exec`. Users only get `GET /api/tools`: id, name, description of
+  the tools that are on, never the code or the valves.
+- a tool id must be an identifier (stored lower-case); the chat runs only ids that exist and are
+  on, whatever the browser sends.
+- tool names, arguments and results are shown with `textContent` only (`toolBlock` in `index.html`).
+- there is no `requirements:` pip install from the tool's frontmatter, on purpose.
+
+How it works:
+- **Specs** come from type hints and `:param x:` docstring lines, as Open WebUI does. Parameters
+  starting with `__` are not shown to the model; `__user__` (id, email, name, role of the person
+  chatting) and `__id__` are passed only to methods that take them. The model cannot pass them itself.
+- **Valves:** a `class Valves(BaseModel)` inside `Tools` is the tool's settings (API keys, limits),
+  a form in the editor, stored as JSON in `tool.valves` (plain text in `auth.db`). Set on the
+  instance before every chat.
+- **On/off** per tool, for everyone. **Default tools per model:** Admin Panel -> Models, saved as
+  `tool_ids` in `model_setting`; the chat's wrench menu starts with those ticked. The user can
+  change the ticks per chat; `tool_ids` goes with `/api/chat` (at most 20).
+- **The loop:** the model gets the ticked tools' specs; when it answers with `tool_calls` each one
+  runs (sync methods in a thread, async awaited, `TIMEOUT` 30 s), the result (cut to 4000
+  characters) goes back as a `tool` message, and the model is asked again. After
+  `MAX_TOOL_ROUNDS` (5) it answers without tools. A tool that raises, hangs, is unknown or gets bad
+  arguments gives `Error: ...` to the model; the chat goes on. Events `tool_call` and `tool_result`
+  show as a folded "Used <name>" block above the reply.
+- OpenCode models get no tools (a notice says so). The model must support tools: llama-server
+  needs its Jinja chat templates (default in current builds; `start.sh` passes no `--jinja` or
+  `--no-jinja`); on Ollama a model without the `tools` capability answers with an error when a
+  tool is ticked. **Not yet tried with a real model** on either server: only against stand-ins.
+
+Things to know:
+- **Prompt injection.** The model decides what to call, and an attached file or a pasted text can
+  tell it to. A tool runs for whoever is chatting, with the server's rights: write tools that only
+  read, or that check `__user__["role"]`, and never one that runs shell commands, SQL or `eval` on
+  its arguments. Open WebUI's own template has a calculator with `eval(equation)`: that is code
+  execution on the server for every chat user, so this app's template does not (checked by
+  `tests/tools.py`, which loads the template from `admin-tools.html`).
+- The `Error: <exception text>` goes to the model and is shown to the user. An exception that
+  contains a valve (a URL with `?key=`) shows it: catch such errors in the tool.
+- The number of calls in one round is not capped (5 rounds are).
+- Sync tools run in a pool of their own (`_pool`, 8 threads in `tools.py`), so a hung tool cannot
+  stall Von routing or invoice reading. Python cannot kill a thread: 8 sync calls that never return
+  fill that pool, and every later sync tool call times out until the app is restarted.
+- Tool code is run again after a restart, at the first chat that uses it, and on every save.
+- Test without a server or a model: `cd backend && .venv/bin/python tests/tools.py` (routes, who
+  may reach them, specs, valves, the loop with a stand-in model, both clients against a fake server).
+- **The two bundled tools** in `tools/` are Open WebUI tools adapted to this app: `generate_spreadsheets.py`
+  (id `generate_spreadsheets`, Excel) and `generate_slides.py` (id `generate_slides`, PowerPoint). To install
+  one: Admin Panel -> Tools -> New tool, type the id, paste the whole file, save. Both need `openpyxl` and
+  `python-pptx`, listed in `requirements.txt` (`cd backend && uv sync --inexact` if a package is missing).
+  Their files go to `backend/data/tool_files/` and are linked as `/api/tools/files/<name>` (signed-in users
+  only, never deleted). Slides valves: `unsplash_access_key` (optional; no key, no stock photos), and
+  `template_mode_enabled`, `presentation_edit_enabled`, `inspect_slides_enabled`, all off by default: chat
+  attachments are not stored here, so template mode and inspect are not available. Offline test for the
+  slides tool: `cd backend && .venv/bin/python tests/slides_tool.py`; the spreadsheet tool has no test file yet.
+
+## Workspaces (Knowledge)
+
+`/workspaces.html`, a copy of Open WebUI's Knowledge. A workspace is a set of documents added once, split into
+passages and indexed on this machine; picked in the chat's model menu, every question in it is answered from the
+passages that match, with a "Sources" block under the reply. Code: `workspaces/workspace_engine/` (`index.py`,
+`service.py`, `chunking.py`, `embedding.py`, `prompts.py`), routes `backend/app/workspaces/routes.py`
+(`/api/workspaces`), data in `backend/data/workspaces/` (`WORKSPACES_DIR`), one folder and one SQLite
+`index.db` for each workspace.
+
+- **Who:** every signed-in user lists, opens, searches and chats with a workspace; only admins create, rename,
+  add or remove documents, reindex or delete (`Depends(admin_user)`). Creating the same name twice at once is
+  serialised by a lock.
+- **Search:** words (SQLite FTS5) always; meaning too while the embedding model answers. On llama-server that is
+  EmbeddingGemma-300M (Q8_0 GGUF in `/home/ahana/models/embed/`) in a container of its own, **on the CPU**
+  (the card is full): `llamacpp/server/start-embed.sh` starts `llama-embed-webui` on `127.0.0.1:8102` (same
+  `LLAMACPP_API_KEY`, `--restart unless-stopped`). Config: `embed: url:` and `workspaces.embed_host: embed`,
+  `embed_model: embeddinggemma`, with EmbeddingGemma's query/document prefixes, in `llamacpp/config/models.yaml`.
+  Measured 22 October: 368 MiB RAM, 11-17 ms a question, 0.9 s for 8 passages of 1200 characters. Stopped, search is by words.
+  After a change of embedding model, Re-index the workspace. "how much time off do I get?" finds the leave policy
+  (which says "earned leave") first by meaning; by words alone it came third.
+- **Reading a document:** each document's text by section (a PDF page by page) and its original file are kept in
+  `index.db` (tables `sections`, `originals`) and go with it. `GET /api/workspaces/{id}/documents/{doc}` gives
+  `{name, kind, sections: [{label, text}]}`; `.../{doc}/file` the original (PDF shown inline, anything else
+  downloaded, `nosniff`). Any signed-in user. A document added before 22 October has no original (404: add it
+  again) and its text is put back together from its passages. The chat's Sources link to it
+  (`workspace_id` and each item's `doc` in the `sources` event).
+- Documents: PDF (kept by page, so a source says "page 87"), Word, Excel, CSV, text. Pictures are refused.
+  `MAX_CHARS` 5,000,000 a file, `workspaces.max_upload_mb` (50): the upload is read up to the limit plus one byte,
+  then refused with 413.
+- Only the passages that fit go to the model (`ollama_pipeline/context.py`, see "Big files").
+- Test without a model: `cd backend && .venv/bin/python -m workspace_engine`.
+
+## Databases
+
+`/databases.html`, the SQL connector: a user picks a saved database in the chat's model menu and asks in plain
+words; the model looks at the tables and runs read-only queries (tools `list_tables`, `get_table_schema` and the query tool in
+`sql/sql_connector/tools.py`); the answer follows, with each query shown in a folded block above it. PostgreSQL,
+MySQL/MariaDB and SQLite. Code: `sql/sql_connector/`, routes `backend/app/sql/routes.py` (`/api/sql`),
+connections in `backend/data/sql/` (`SQL_DIR`). `sql:` block in `models.yaml`: `model` (the one that calls tools:
+`gemma` on llama-server), `max_rows`, `timeout`, `max_rounds`.
+
+- **Who:** every signed-in user lists the names and uses a database in the chat. Only admins save, test, change,
+  delete or list the tables of a connection: it holds a password.
+- **Read only, four locks** (`safety.py`, `connectors.py`): one statement, starting with SELECT/WITH/SHOW/
+  DESCRIBE/EXPLAIN/VALUES/TABLE, no write word anywhere outside strings; every driver runs one statement a call;
+  SQLite is opened read-only; PostgreSQL and MySQL run each query in a read-only transaction. **The last lock to
+  rely on is a database user that can only read**: make one on the database server and save that user. The
+  text check is known to be bypassable (PostgreSQL `E'\''` strings); the read-only transaction still stops writes.
+- **Saved passwords:** shown to nobody. A change with an empty password keeps the saved one only for the same
+  engine, host, port and user (`same_server`); otherwise the empty password is used and the test fails.
+- **SQLite files inside `backend/data/` are refused** (users, password hashes, saved connections live there).
+  Any other file the server can read can be added by an admin: give the admin role only to people you trust.
+- A spreadsheet attached in the chat becomes a SQLite table of its own, queried the same way (see "Big files").
+- The model must call tools: llama-server needs its Jinja chat templates (the default; do not pass `--no-jinja`),
+  and the model entry is not `tools: false`. **Llama 3.1 8B cannot do it** (live test, 22 October: llama-server's
+  "peg-native format" error on a database question; it sends a chart's `series` as a string), so it is `tools: false`
+  and `sql.model` is `gemma`: a chat with a database, a chart or a memory is answered by gemma4, also when llama is
+  picked (a note says so). With none able to call tools, the chat says so and names llama-server.
+- Test without a server: `cd backend && .venv/bin/python -m sql_connector`.
+
+## Features & Memory
+
+Three skills for the chat's local model, with switches in Admin Panel -> Features (`/admin-features.html`):
+**Database queries**, **Charts**, **Memory** and, under Memory, **Save and forget from the chat**. All on by
+default. Code: `skills/agent_skills/`, routes `backend/app/skills.py`: `GET /api/skills` (any signed-in user: what
+is on, the chat hides what is off), `GET/POST /api/admin/features` (admins), `/api/memories` (the user's own).
+Switches are kept in `backend/data/skills/skills.json`.
+
+- **Charts:** offered when a database or a spreadsheet is in the chat, or the message asks for a chart or graph (not for a workspace alone). The model calls `create_chart` with kind (bar, line, area, pie) and numbers; the numbers are checked
+  (`charts.py`) and a mistake goes back to the model to correct. The reply carries a `chart` in its `tool_result`
+  event and the chat page draws it. The model never sends code or HTML to the page.
+- **Memory:** short facts each person wants kept, given to the model in every chat of theirs. **Private to each
+  user** (scope = user id; another user's id answers 404), deleted with the user. Add, edit and delete in the
+  sidebar menu -> Memory. When an admin allows it, "remember that ..." and "forget ..." in the chat save or remove
+  one; "forget" asks which one when two match equally. Limits: 200 per user, 500 characters each. A memory is text
+  given to the model: do not store secrets in it.
+- The tools model status in the admin page is `sql.model` from `models.yaml`; skills need a model that calls tools.
+- Test without a model: `cd backend && .venv/bin/python -m agent_skills`.
+
+## Big files (chat attachments, context)
+
+**Why:** one request to llama-server holds only a slot of its context (`ctx-size` / `parallel`, shared with the
+other slots because of kv-unified). A 100-page PDF is about 60,000 tokens. Before, the whole text went into the
+chat message and came back with every later message: refused, or the model saw part of the file.
+
+- `POST /api/files` keeps the file under a random id in `backend/data/chatfiles/` (`CHATFILES_DIR`) for
+  `documents.keep_hours` and answers `{id, name, kind, chars, tokens, pages, truncated, sheets, rows, query}` with
+  no text. `/api/chat` takes `files: [{name, id}]` (the old `{name, content}` still works). Code:
+  `workspaces/workspace_engine/chatfiles.py`. Limit `workspaces.max_upload_mb` (50 MB) a file; the upload is read to the limit plus
+  one byte before the check, never in full. A scanned PDF still answers with `images` and a `note`.
+- **For each question:** files that fit are given whole; otherwise the passages that match, as many as fit, with a
+  "Sources" block under the reply. A short follow-up ("and how often?") is searched together with the question
+  before it. If nothing matches, the start of the file goes to the model but is not listed as a source.
+- **"Summarise ..." of a file too long to read at once:** `read_whole` reads it in parts that fit, notes each (the
+  progress shows as "Reading ... parts read"), and the answer is written from the notes; the notes are kept.
+  At most 40 parts (about 250 pages).
+- **Spreadsheets** (`.xlsx`, `.csv`) are loaded into a SQLite table and the model queries them with the Databases
+  tools instead of reading rows ("total sales by region as a chart" gives the SQL, the totals and a chart).
+- **Fitting:** `ollama/ollama_pipeline/context.py` fits every request to the model's real context before it is
+  sent: oldest turns go first, then the largest instruction or tool result is cut in the middle. Tokens are
+  estimated, leaning high; when the server still refuses ("exceeds the available context size", `ContextOverflow`)
+  `chat_stream` retries once with a budget scaled by the numbers in the error. The context comes from `models.ini`
+  on llama-server and `num_ctx` on Ollama.
+- Test without a model: `cd backend && .venv/bin/python -m ollama_pipeline.selfcheck`.
+
+### Running these features (test instance)
+
+To try them without touching the running app, copy the data and use another port. `app/settings.py` reads
+`PORT`, `HOST`, `AUTH_DB`, `DOCUMENTS_DIR`, `SQL_DIR`, `WORKSPACES_DIR`, `CHATFILES_DIR`, `SKILLS_DIR`. Templates and
+tool files still go to `backend/data/`. The Von router needs Python 3.12 (`uv sync --extra router`); on 3.11 the
+app runs and routes by keyword rules.
+
+## Access requests (n8n)
+
+People ask for access on the request page (`access-page` container, nginx, port
+8080; its source is `new.html`), n8n (`n8n` container, port 5678) asks the approver,
+and on approval the account is created **in this app's database** as a normal `user`.
+Workflow file: `n8n/fastshot-access-approval.json`. App side: `backend/app/access.py`,
+`POST /api/access/users` (header `X-Access-Key` = `ACCESS_API_KEY` in `backend/.env`;
+without the key set the route answers 503). It always makes a `user` (a `role` in the
+body is ignored), stores only the password hash, answers 409 for an existing email.
+
+How it runs: request page -> `access-request` webhook -> approver email (signed link,
+valid 7 days) -> approver opens it and clicks **confirm** (a second step, so mail
+scanners that open links cannot approve) -> password generated in the *Generate
+password* node (rules at its top) -> `POST /api/access/users` -> credentials emailed to
+the person. Nothing is written to Excel any more.
+
+Set up (once): in n8n import the file, open the **Settings** node and set `secret`
+(any long random text), `accessKey` (`grep ACCESS_API_KEY backend/.env`) and check
+`appUrl` (`http://192.168.250.3:8000`, reachable from the n8n container), `n8nUrl`,
+`approverEmail`, `fromEmail`; keep the SMTP credential; **deactivate the old "Create
+account and email credentials" workflow first** (same webhook paths), then activate
+this one. The request page needs no change.
+
+Things to know:
+- The old workflow's `users.xlsx` (plaintext passwords) is untouched. Its
+  `download-users` webhook is protected only by `key=CHANGE_ME_DOWNLOAD_KEY` unless
+  that was changed: while the old workflow is active anyone on the network can
+  download that file. Existing rows can be loaded into the app with the admin
+  panel's CSV import (columns Name, Email, Password, Role).
+- If the email fails after the account was made, the approver sees a page saying so;
+  set a new password for that person in the Admin Panel.
+- The person has no way to change the generated password yet (there is no
+  self-service password change; an admin can set one).
+
 ## Start here on a new machine
 
 Five steps. "Setup" further down has the details and the reasons.
@@ -117,6 +503,21 @@ Five steps. "Setup" further down has the details and the reasons.
    `powershell -ExecutionPolicy Bypass -File run.ps1`) and open
    <http://127.0.0.1:8000>. The server log should show `Router: Von is ready`
    and `OpenCode: server ready at …`.
+
+**On llama-server instead of Ollama** (Linux with Docker and an NVIDIA GPU;
+steps 3 and 4 are then not needed, Ollama only has to hold the model files):
+1. Put `LLAMACPP_API_KEY=<some long random text>` and `PIPELINE=llamacpp` in
+   `backend/.env`.
+2. Start the container: `llamacpp/server/start.sh`. It reads Ollama's model
+   files from `/home/ollama/models/blobs` (Ollama's `OLLAMA_MODELS` since 15
+   October 2026; `OLLAMA_BLOBS=<folder>` overrides); the paths are in
+   `llamacpp/server/models.ini`. **A model removed from Ollama (`ollama rm`, or
+   its files moved) breaks llama-server at its next restart**, not before: a
+   running container keeps the open files. On 16 October gemma4:12b had to be
+   pulled again for that reason.
+3. `cd backend && python -m llamacpp_pipeline` must list both models as ready.
+4. `./run.sh`. The server log shows `Pipeline: llama-server at http://127.0.0.1:8101`.
+   Make sure no model is loaded in Ollama at the same time (`ollama ps`).
 
 ## Latest changes — 4 October 2026, on the Windows test laptop
 
@@ -768,12 +1169,28 @@ ollama/config/models.yaml        every model, route and num_ctx  ← the one fil
 ollama/config.local/             optional per-machine copy of config/, not in git
 ollama/.opencode/                the app's OpenCode keeps its own data here, not in git
 ollama/ollama_pipeline/
+  context.py                     fits a request to the model's context (oldest turns first)
   router.py                      which model answers (Von + keyword rules)
   pipeline.py                    builds the prompt, streams the reply, falls back
   registry.py                    which models exist / are pulled
   opencode.py                    runs OpenCode's server and streams from it
   documents.py                   PDF/DOCX/text → text (chat attachments)
   client.py                      raw calls to Ollama
+llamacpp/                        the app on llama-server instead of Ollama (PIPELINE=llamacpp)
+  config/models.yaml             its two models, and which one Documents, Word and Invoices use
+  server/models.ini              what llama-server loads: model files, context, slots (Admin Panel -> Models)
+  server/start.sh                starts the container llama-server-webui on 127.0.0.1:8101
+  server/start-embed.sh          starts llama-embed-webui (EmbeddingGemma, CPU) on 127.0.0.1:8102
+  llamacpp_pipeline/
+    client.py                    raw calls to llama-server, answered in Ollama's shapes
+    registry.py                  Ollama's registry with that client
+    config.py                    reads config/models.yaml; num_ctx from models.ini
+    server_config.py             reads/writes models.ini's ctx-size and parallel, restarts the container
+sql/sql_connector/               Databases: saved connections, read-only checks, the model's query tools
+workspaces/workspace_engine/     Workspaces (passages, search) and chat files kept on the server
+skills/agent_skills/             Charts and Memory, and the switches for them
+backend/app/sql/, workspaces/, skills.py   their HTTP routes
+frontend/workspaces.html, databases.html, admin-features.html   their pages
 documents/document_engine/       the Word documents page: engine/ (files) and model/ (prompts, calls)
 documents/document_engine/invoices/   the Invoices tab: reader, checks, export, and the model's part
 documents/document_engine/word/  the Word document tab: sources, renderer, build, and the model's part
@@ -788,15 +1205,22 @@ run.sh, run.ps1                  start the app (macOS/Linux, Windows)
 
 ## Rules
 
-- Calls go one way: `frontend → backend → documents → ollama`. No Ollama-specific
-  code in `backend/`; it only calls the `ollama_pipeline` and `document_engine`
-  packages. `ollama/` never imports from `documents/`.
+- Calls go one way: `frontend → backend → documents → ollama`, or
+  `→ llamacpp → ollama` in llama-server mode. No Ollama- or llama.cpp-specific
+  code in `backend/`; it only calls the `ollama_pipeline`, `llamacpp_pipeline`
+  and `document_engine` packages, and picks the pipeline from `PIPELINE`.
+  `ollama/` never imports from `documents/` or `llamacpp/`. `llamacpp/` reuses
+  the chat steps of `ollama_pipeline` and does not change them.
+- One model server on the GPU at a time: llama-server holds 14.7 of the 16 GB,
+  and a model Ollama loads meanwhile fails with "CUDA out of memory".
 - Routing must never block a chat. Any router failure falls back to keyword
   rules; a missing routed model falls back to another one. Keep it that way.
 - `frontend/index.html` follows a pixel-exact design. On desktop the composer
   toolbar uses absolute coordinates — do not convert it to flexbox or change
   those numbers.
-- Backend or `ollama/` changes need a server restart. Frontend changes only
+- Backend, `ollama/` or `llamacpp/` changes need a server restart; a change to
+  `llamacpp/server/models.ini` also needs `llamacpp/server/start.sh` again (Admin Panel -> Models
+  does both for ctx-size and parallel). Frontend changes only
   need a browser refresh.
 - New Python dependency: add it to the right `pyproject.toml`, then
   `cd backend && uv sync --inexact` (plain `uv sync` removes the Von extra),
@@ -807,6 +1231,9 @@ run.sh, run.ps1                  start the app (macOS/Linux, Windows)
 
 ## Not built yet
 
-No login, no saved chat history, no text from scanned PDFs, Figma links are
+No "forgot password" by email, no
+per-user permissions on workspaces and databases (everyone signed in uses all of them, only admins change them),
+no text from scanned PDFs (the chat reads them as
+pictures instead; the Word tab refuses them), Figma links are
 passed as text only, no paid cloud models (e.g. Claude) - only OpenCode's
 free tier.
